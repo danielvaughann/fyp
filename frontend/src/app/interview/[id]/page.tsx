@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 // define structure of api response
@@ -13,6 +13,7 @@ type CurrentResponse = {
         text: string;
         difficulty: string;
         topic: string;
+        audio_url?: string;
     };
 };
 // main component exported from this file
@@ -25,6 +26,9 @@ export default function InterviewPage() {
     const [current, setCurrent] = useState<CurrentResponse | null>(null);
     const [answer, setAnswer] = useState("");
     const [error, setError] = useState("");
+    // reference to audio element between renders
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [autoPlayBlocked, setAutoPlayBlocked] = useState(false);
 
     // get current question from api
     async function loadCurrentQuestion() {
@@ -104,6 +108,29 @@ export default function InterviewPage() {
         }
         loadCurrentQuestion();
     }
+        useEffect(() => {
+          const audioUrl = current?.question?.audio_url;
+          if (!audioUrl) return;
+          setAutoPlayBlocked(false)
+
+          if (audioRef.current) {
+            audioRef.current.pause();
+          }
+
+          const audio = new Audio(`http://localhost:8000${audioUrl}`);
+          audioRef.current = audio;
+
+          audio.play().catch(() => {
+
+            setAutoPlayBlocked(true);
+          });
+
+          return () => {
+            audio.pause();
+          };
+        }, [current?.question?.audio_url]);
+
+
 
     return (
         <div className="page">
@@ -113,7 +140,7 @@ export default function InterviewPage() {
             {current && current.question && (
                 <div>
                     <p>
-                        Question {current.index ?? "?"} / {current.total ?? "?"}
+                    Question {(current.index ?? 0) + 1} / {current.total ?? "?"}
                     </p>
                     <p>{current.question.text}</p>
                     <textarea
@@ -124,6 +151,23 @@ export default function InterviewPage() {
                     />
                     <br />
                     <button onClick={submitAnswer}>Submit Answer</button>
+                    <button
+                      onClick={() => {
+                        const audio_file = audioRef.current;
+                        if (!audio_file) return;
+
+                        audio_file.currentTime = 0;
+                        audio_file.play().catch(() => {
+                          // autoplay blocked — show message
+                          setAutoPlayBlocked(true);
+                        });
+                      }}
+                    >
+                      Play question audio
+                    </button>
+                    {autoPlayBlocked && (
+                      <p style={{ marginTop: 6 }}>Your browser blocked autoplay</p>
+                    )}
                 </div>
             )}
         </div>

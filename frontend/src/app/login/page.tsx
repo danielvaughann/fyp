@@ -56,6 +56,34 @@ export default function LoginPage() {
             setError("Request failed");
         }
     }
+    async function devLogin() {
+      setError("");
+
+      try {
+        const body = new URLSearchParams();
+        body.set("username", "dan4@gmail.com");
+        body.set("password", "1234");
+
+        const res = await fetch("http://localhost:8000/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          setError("Dev login failed");
+          return;
+        }
+
+        localStorage.setItem("token", data.access_token);
+        router.push("/dashboard");
+      } catch {
+        setError("Dev login failed");
+      }
+    }
+
 
     return (
         <div className="page">
@@ -92,6 +120,19 @@ export default function LoginPage() {
                         value={isSignup ? "Sign Up" : "Login"}
                     />
                 </form>
+                <button
+                  type="button"
+                  onClick={devLogin}
+                  style={{
+                    marginTop: 10,
+                    background: "#333",
+                    color: "white",
+                    padding: "8px",
+                    borderRadius: 4,
+                  }}
+                >
+                  Dev Login (dan4@gmail.com)
+                </button>
 
                 <div className={isSignup ? "login-link" : "signup-link"}>
                     <p>

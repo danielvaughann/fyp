@@ -20,14 +20,18 @@ from models import Session as InterviewSession
 import random
 from models import Answer
 from datetime import datetime, timezone
+from fastapi.staticfiles import StaticFiles # allow browser to request mp3 files
+from tts import generate_tts_audio
 app = FastAPI()
-app.add_middleware( # cross origin resource sharing 
+app.add_middleware( # cross origin resource sharing
     CORSMiddleware,
     allow_origins=["http://localhost:3000"], # allow frontend to make request to backend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# make files in static folder available at /static url
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/health") # uvicorn main:app --reload --port 8000
 def health(): # check if api is running
@@ -37,7 +41,7 @@ def health(): # check if api is running
 def question_count(db: Session = Depends(get_db)):
     return {"count": db.query(Question).count()}
 
-class SignupRequirements(BaseModel): 
+class SignupRequirements(BaseModel):
     email: EmailStr
     password: str
 
@@ -252,6 +256,10 @@ def get_current_question(
 
     if not question:
         raise HTTPException(status_code=500, detail="Question not found")
+
+    #create mp3 file for question
+    audio_url = generate_tts_audio(question.text)
+
     return {
         "done": False,
         "index": interview_session.current_index,
@@ -261,5 +269,6 @@ def get_current_question(
             "topic": question.topic,
             "difficulty": question.difficulty,
             "text": question.text,
+            "audio_url": audio_url,
         },
     }
