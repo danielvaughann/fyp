@@ -37,6 +37,8 @@ class Session(Base):
     status = Column(String(20), nullable=False, default="in_progress")
     start_time = Column(DateTime(timezone=True), server_default=func.now())
     end_time = Column(DateTime(timezone=True), nullable=True)
+    question_ids = Column(JSON,nullable=False, default=list)
+    current_index = Column(Integer,nullable=False, default=0)
 
 
 class Answer(Base):
@@ -46,6 +48,6 @@ class Answer(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False)
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
     transcript = Column(Text, nullable=False)
-    score_breakdown = Column(JSON, nullable=False)
+    score = Column(Integer, nullable=False)
     feedback = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

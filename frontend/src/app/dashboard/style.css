@@ -1,0 +1,121 @@
+body {
+    font-family: 'Roboto', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #ffffff;
+}
+
+.form-container {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 18px rgba(11,37,69,0.08);
+    overflow: hidden;
+    max-width: 420px;
+    width: 100%;
+    padding: 24px;
+    box-sizing: border-box;
+    text-align: center;
+    border: 1px solid rgba(30,144,255,0.12);
+}
+
+.form-container h2 {
+    color: #0b2545;
+    margin-bottom: 18px;
+}
+
+/* INPUT BASE STYLES */
+
+.login-form input,
+.signup-form input,
+input, textarea, select {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0;
+    box-sizing: border-box;
+    border: 1px solid rgba(11,37,69,0.12);
+    border-radius: 6px;
+    outline: none;
+    background: #fff;
+    color: #0b2545;
+}
+
+/* LOGIN PAGE INPUTS */
+
+.login-form input[type="text"],
+.login-form input[type="email"],
+.login-form input[type="password"] {
+    background-color: #ecf0f1;
+    color: #333;
+}
+
+.login-form input[type="text"]:focus,
+.login-form input[type="email"]:focus,
+.login-form input[type="password"]:focus {
+    background-color: #d5dbdb;
+}
+
+/* LOGIN SUBMIT BUTTON */
+
+.login-form input[type="submit"] {
+    background-color: #1e90ff;
+    color: #ffffff;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border: none;
+    padding: 10px 14px;
+    border-radius: 6px;
+}
+
+.login-form input[type="submit"]:hover {
+    background-color: #157de6;
+}
+
+/* COMMON LINK STYLES */
+
+.signup-link a,
+.login-link a {
+    color: #1e90ff;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.signup-link p,
+.login-link p {
+    color: #6b7280;
+    margin-top: 12px;
+    font-size: 14px;
+}
+
+/* SIGNUP PAGE INPUTS */
+
+.signup-form input[type="text"],
+.signup-form input[type="email"],
+.signup-form input[type="password"] {
+    background-color: #cbd1d3;
+    color: #333;
+}
+
+.signup-form input[type="text"]:focus,
+.signup-form input[type="email"]:focus,
+.signup-form input[type="password"]:focus {
+    background-color: #9eb1b1;
+}
+
+/* SIGNUP SUBMIT BUTTON */
+
+.signup-form input[type="submit"] {
+    background-color: #1e90ff;
+    color: #ffffff;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border: none;
+    padding: 10px 14px;
+    border-radius: 6px;
+}
+
+.signup-form input[type="submit"]:hover {
+    background-color: #157de6;
+}

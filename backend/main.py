@@ -16,41 +16,44 @@ from security import (
     verify_password,
 )
 from deps import get_current_user
-
-
+from models import Session as InterviewSession
+import random
+from models import Answer
+from datetime import datetime, timezone
 app = FastAPI()
-app.add_middleware(
+app.add_middleware( # cross origin resource sharing 
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000"], # allow frontend to make request to backend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.get("/health") # uvicorn main:app --reload --port 8000
-def health():
+def health(): # check if api is running
     return {"status": "API running"}
 
-@app.get("/questions/count")
+@app.get("/questions/count") #return number of questions in database
 def question_count(db: Session = Depends(get_db)):
     return {"count": db.query(Question).count()}
 
-class SignupReq(BaseModel):
+class SignupRequirements(BaseModel): 
     email: EmailStr
     password: str
 
 
 @app.post("/auth/signup")
-def signup(payload: SignupReq, db: Session = Depends(get_db)):
+def signup(payload: SignupRequirements, db: Session = Depends(get_db)):
 
-    if db.query(User).filter(User.email == payload.email).first():
+    if db.query(User).filter(User.email == payload.email).first(): #check if user already exists
         raise HTTPException(status_code=400, detail="Email already exists")
 
+    # create user
     user = User(email=payload.email, password_hash=get_password_hash(payload.password))
     db.add(user)
     db.commit()
-    db.refresh(user)
-    # issue token immediately (same as login)
+    db.refresh(user) # refresh object with database generated values (id)
+    # issue jwt token
     expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(sub=str(user.id), expires_delta=expires)
 
@@ -66,7 +69,9 @@ def login_for_access_token(  #login OAuth2PasswordBearer
     form_data: OAuth2PasswordRequestForm = Depends(), # extract login for data
     db: Session = Depends(get_db),
 ):
+    #find user by email
     user = db.query(User).filter(User.email == form_data.username).first()
+
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -79,7 +84,182 @@ def login_for_access_token(  #login OAuth2PasswordBearer
     return {"access_token": token, "token_type": "bearer"}
 
 
-# --- Protected endpoint example ---
-@app.get("/users/me")
+# gets jwt token from authorisation header and validates
+@app.get("/users/me") #protected endpoint needs token
 def read_users_me(current_user: User = Depends(get_current_user)):
     return {"id": current_user.id, "email": current_user.email}
+
+class startInterviewRequirements(BaseModel):
+    topic: str
+    difficulty: str
+    question_count: int
+
+@app.post("/interview/start")
+def start_interview(
+    payload: startInterviewRequirements,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    questions_filtered = (
+        db.query(Question)
+        .filter(Question.topic == payload.topic)
+        .filter(Question.difficulty == payload.difficulty)
+        .all()
+    )
+    if len(questions_filtered) < payload.question_count:
+        raise HTTPException(
+            status_code=400,
+            detail="Not enough questions available for the selected topic and difficulty",
+        )
+    # create new interview session in database
+    selected_questions = random.sample(questions_filtered, payload.question_count)
+    question_ids = [question.id for question in selected_questions]
+    interview_session = InterviewSession(
+        user_id=user.id,
+        topic=payload.topic,
+        difficulty=payload.difficulty,
+        question_count=payload.question_count,
+        question_ids=question_ids,
+        current_index=0,
+        status="in_progress",
+
+    )
+    db.add(interview_session)
+    db.commit()
+    db.refresh(interview_session)
+    return {"session_id": str(interview_session.id)} #return session id to frontend
+
+
+class submitAnswerRequirements(BaseModel):
+    transcript: str
+
+@app.post("/interview/{session_id}/answer")
+def submit_answer(
+    session_id: str, # path from url
+    payload: submitAnswerRequirements,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    interview_session = (
+        db.query(InterviewSession)
+        .filter(InterviewSession.id == session_id)
+        .filter(InterviewSession.user_id == user.id)
+        .first()
+    )
+    if not interview_session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    if interview_session.status != "in_progress":
+        raise HTTPException(status_code=400, detail="Interview session is not active")
+
+    if interview_session.current_index >= interview_session.question_count:
+        raise HTTPException(status_code=400, detail="All questions have been answered")
+
+    question_id = interview_session.question_ids[interview_session.current_index]
+
+
+    score = 8
+    feedback = "Sample Feedback"
+
+    answer = Answer(
+        session_id=interview_session.id,
+        question_id=question_id,
+        transcript=payload.transcript,
+        score=score,
+        feedback=feedback,
+    )
+    db.add(answer)
+
+    interview_session.current_index += 1
+    if interview_session.current_index >= interview_session.question_count:
+        interview_session.status = "completed"
+        interview_session.end_time = datetime.now(timezone.utc)
+
+    db.commit()
+    return{"ok":True, "completed": interview_session.status == "completed"}
+
+@app.get("/interview/{session_id}/summary")
+def get_interview_summary(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    interview_session = (
+        db.query(InterviewSession)
+        .filter(InterviewSession.id == session_id)
+        .filter(InterviewSession.user_id == user.id)
+        .first()
+    )
+    if not interview_session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    if interview_session.status != "completed":
+        raise HTTPException(status_code=400, detail="Interview session is not completed")
+
+    answers = (
+        db.query(Answer)
+        .filter(Answer.session_id == interview_session.id)
+        .all()
+    )
+
+    summary = []
+    for answer in answers:
+        question = db.query(Question).filter(Question.id == answer.question_id).first()
+        summary.append(
+            {
+                "question_id": question.id,
+                "question_text": question.text,
+                "transcript": answer.transcript,
+                "score": answer.score,
+                "feedback": answer.feedback,
+            }
+        )
+
+    return {
+        "session": {
+            "id": str(interview_session.id),
+            "topic": interview_session.topic,
+            "difficulty": interview_session.difficulty,
+            "status": interview_session.status,
+        },
+        "answers": summary,
+    }
+
+@app.get("/interview/{session_id}/current")
+def get_current_question(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    interview_session = (
+        db.query(InterviewSession)
+        .filter(InterviewSession.id == session_id)
+        .filter(InterviewSession.user_id == user.id)
+        .first()
+    )
+    if not interview_session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    if interview_session.status != "in_progress":
+        raise HTTPException(status_code=400, detail="Interview session is not active")
+
+    if interview_session.current_index >= interview_session.question_count:
+        raise HTTPException(status_code=400, detail="All questions have been answered")
+
+    # get current question from json array
+    question_id = interview_session.question_ids[interview_session.current_index]
+    question = db.query(Question).filter(Question.id == question_id).first()
+
+    if not question:
+        raise HTTPException(status_code=500, detail="Question not found")
+    return {
+        "done": False,
+        "index": interview_session.current_index,
+        "total": interview_session.question_count,
+        "question": {
+            "id": question.id,
+            "topic": question.topic,
+            "difficulty": question.difficulty,
+            "text": question.text,
+        },
+    }

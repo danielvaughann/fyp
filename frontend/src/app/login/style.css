@@ -1,0 +1,121 @@
+body {
+    font-family: 'Roboto', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #2c3e50;
+}
+
+/* Minimal white/blue testing theme for login page */
+
+.form-container {
+  max-width: 420px;
+  margin: 40px auto;
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(11,37,69,0.06);
+  border: 1px solid rgba(30,144,255,0.08);
+}
+
+.form-container h2 {
+  margin: 0 0 12px 0;
+  color: var(--foreground, #0b2545);
+}
+
+/* INPUT BASE STYLES */
+
+.login-form input,
+.signup-form input {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0;
+    box-sizing: border-box;
+    border: none;
+    border-radius: 4px;
+    outline: none;
+}
+
+/* LOGIN PAGE INPUTS */
+
+.login-form input[type="text"],
+.login-form input[type="email"],
+.login-form input[type="password"] {
+    background-color: #ecf0f1;
+    color: #333;
+}
+
+.login-form input[type="text"]:focus,
+.login-form input[type="email"]:focus,
+.login-form input[type="password"]:focus {
+    background-color: #d5dbdb;
+}
+
+/* LOGIN SUBMIT BUTTON */
+
+.login-form input[type="submit"] {
+    background-color: #2ecc71;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.login-form input[type="submit"]:hover {
+    background-color: #27ae60;
+}
+
+/* COMMON LINK STYLES */
+
+.signup-link a,
+.login-link a {
+    color: #9294ee;
+    text-decoration: none;
+    font-weight: bold;
+    transition: color 0.3s ease;
+}
+
+.signup-link a:hover,
+.login-link a:hover {
+    color: #2980b9;
+}
+
+.signup-link p,
+.login-link p {
+    color: #7f8c8d;
+    margin-top: 12px;
+    font-size: 16px;
+}
+
+/* SIGNUP PAGE INPUTS */
+
+.signup-form input[type="text"],
+.signup-form input[type="email"],
+.signup-form input[type="password"] {
+    background-color: #cbd1d3;
+    color: #333;
+}
+
+.signup-form input[type="text"]:focus,
+.signup-form input[type="email"]:focus,
+.signup-form input[type="password"]:focus {
+    background-color: #9eb1b1;
+}
+
+/* SIGNUP SUBMIT BUTTON */
+
+.signup-form input[type="submit"] {
+    background-color: #e74c3c;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.signup-form input[type="submit"]:hover {
+    background-color: #c0392b;
+}
+
+/* small helpers used elsewhere */
+.muted { color: var(--muted, #6b7280); }
+.error { color: #b91c1c; background: #fff1f2; padding: 8px; border-radius: 6px; }
