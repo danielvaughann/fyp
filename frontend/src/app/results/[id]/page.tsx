@@ -80,7 +80,7 @@ export default function ResultsPage() {
               <p><b>Q:</b> {answer_map.question_text}</p>
               <p><b>Your answer:</b> {answer_map.transcript}</p>
               <p><b>Feedback:</b> {answer_map.feedback}</p>
-              <pre>{JSON.stringify(answer_map.score, null, 2)}</pre>
+              <p><b>Score:</b> {answer_map.score}%</p>
               <hr />
             </div>
           ))}

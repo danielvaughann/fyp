@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from fastapi.staticfiles import StaticFiles # allow browser to request mp3 files
 from tts import generate_tts_audio
 from stt import router as stt_router
+from grading import roberta_cosine_grading
 app = FastAPI()
 app.include_router(stt_router)
 app.add_middleware( # cross origin resource sharing
@@ -162,9 +163,13 @@ def submit_answer(
         raise HTTPException(status_code=400, detail="All questions have been answered")
 
     question_id = interview_session.question_ids[interview_session.current_index]
+    question = db.query(Question).filter(Question.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
 
+    sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
 
-    score = 8
+    score = int(round(sim * 100))
     feedback = "Sample Feedback"
 
     answer = Answer(
