@@ -22,7 +22,9 @@ from models import Answer
 from datetime import datetime, timezone
 from fastapi.staticfiles import StaticFiles # allow browser to request mp3 files
 from tts import generate_tts_audio
+from stt import router as stt_router
 app = FastAPI()
+app.include_router(stt_router)
 app.add_middleware( # cross origin resource sharing
     CORSMiddleware,
     allow_origins=["http://localhost:3000"], # allow frontend to make request to backend
