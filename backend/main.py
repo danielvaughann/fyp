@@ -24,6 +24,8 @@ from fastapi.staticfiles import StaticFiles # allow browser to request mp3 files
 from tts import generate_tts_audio
 from stt import router as stt_router
 from grading import roberta_cosine_grading
+from groq import generate_feedback, generate_overall_feedback
+
 app = FastAPI()
 app.include_router(stt_router)
 app.add_middleware( # cross origin resource sharing
@@ -168,9 +170,16 @@ def submit_answer(
         raise HTTPException(status_code=404, detail="Question not found")
 
     sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
-
     score = int(round(sim * 100))
-    feedback = "Sample Feedback"
+
+    print("LLM starting single question feedback generation")
+    feedback = generate_feedback(
+        question_text=question.text,
+        reference_answer=question.reference_answer,
+        transcript=payload.transcript,
+        score=score,
+    )
+    print("LLM stopping single question feedback generation")
 
     answer = Answer(
         session_id=interview_session.id,
@@ -185,6 +194,40 @@ def submit_answer(
     if interview_session.current_index >= interview_session.question_count:
         interview_session.status = "completed"
         interview_session.end_time = datetime.now(timezone.utc)
+
+        #build overall summary and add to database here so its ready for results page
+        answers = (
+            db.query(Answer)
+            .filter(Answer.session_id == interview_session.id)
+            .all()
+        )
+
+        summary = []
+        for answer in answers:
+            question = db.query(Question).filter(Question.id == answer.question_id).first()
+            summary.append(
+                {
+                    "question_id": question.id,
+                    "topic": question.topic,
+                    "question_text": question.text,
+                    "reference_answer": question.reference_answer,
+                    "transcript": answer.transcript,
+                    "score": answer.score,
+                    "feedback": answer.feedback,
+                }
+            )
+        summary_object = {
+            "session": {
+                "id": str(interview_session.id),
+                "topic": interview_session.topic,
+                "difficulty": interview_session.difficulty,
+                "status": interview_session.status,
+            },
+            "answers": summary,
+        }
+        print("LLM starting OVERALL question feedback generation")
+        interview_session.overall_feedback = generate_overall_feedback(summary_object)
+        print("LLM starting OVERALL question feedback generation")
 
     db.commit()
     return{"ok":True, "completed": interview_session.status == "completed"}
@@ -219,7 +262,9 @@ def get_interview_summary(
         summary.append(
             {
                 "question_id": question.id,
+                "topic": question.topic,
                 "question_text": question.text,
+                "reference_answer": question.reference_answer,
                 "transcript": answer.transcript,
                 "score": answer.score,
                 "feedback": answer.feedback,
@@ -232,6 +277,7 @@ def get_interview_summary(
             "topic": interview_session.topic,
             "difficulty": interview_session.difficulty,
             "status": interview_session.status,
+            "overall_feedback": interview_session.overall_feedback,
         },
         "answers": summary,
     }

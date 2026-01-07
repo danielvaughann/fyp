@@ -8,7 +8,9 @@ type SummaryResponse = {
         id: string;
         topic: string;
         difficulty: string;
-        status: string;}
+        status: string;
+        overall_feedback: string;
+    };
     answers: Array<{
         question_id: number;
         question_text: string;
@@ -74,6 +76,13 @@ export default function ResultsPage() {
           <p><b>Status:</b> {summary.session.status}</p>
 
           <hr />
+            {summary.session.overall_feedback && (
+              <div style={{ marginTop: 12, marginBottom: 12 }}>
+                <h3>Overall feedback</h3>
+                <p>{summary.session.overall_feedback}</p>
+                <hr />
+               </div>
+            )}
 
           {summary.answers.map((answer_map, idx) => (
             <div key={idx} style={{ marginBottom: 20 }}>
