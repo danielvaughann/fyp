@@ -9,7 +9,7 @@ export default function DashboardPage() {
     const [error, setError] = useState("");
 
     //default interview settings
-    const [topic, setTopic] = useState("OOP");
+    const [topic, setTopic] = useState("Mixed");
     const [difficulty, setDifficulty] = useState("Junior");
     const [questionCount, setQuestionCount] = useState(3);
     const router = useRouter();
@@ -128,10 +128,11 @@ export default function DashboardPage() {
                         <div>
                             <label>Topic:</label>
                             <select value={topic} onChange={(e) => setTopic(e.target.value)}>
+                                <option value="Mixed">Mixed</option>
                                 <option value="OOP">OOP</option>
                                 <option value="Data Structures">Data Structures</option>
                                 <option value="Algorithms">Algorithms</option>
-                                <option value="System Design">System Design</option>
+                                <option value="General Programming">General Programming</option>
                             </select>
                         </div>
 

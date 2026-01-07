@@ -276,6 +276,7 @@ export default function InterviewPage() {
                 Question {(current.index ?? 0) + 1} / {current.total ?? "?"}
               </p>
               <p>{current.question.text}</p>
+                <p>{current.question.topic}</p>
               <textarea
                 value={answer}
                 onChange={(e) => setAnswer((e.target as HTMLTextAreaElement).value)}

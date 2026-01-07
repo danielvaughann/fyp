@@ -1,4 +1,6 @@
 from fastapi.middleware.cors import CORSMiddleware
+
+from question_selector import selected_mixed_random_questions
 from models import Question
 from datetime import timedelta
 
@@ -109,20 +111,26 @@ def start_interview(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    questions_filtered = (
-        db.query(Question)
-        .filter(Question.topic == payload.topic)
-        .filter(Question.difficulty == payload.difficulty)
-        .all()
-    )
-    if len(questions_filtered) < payload.question_count:
-        raise HTTPException(
-            status_code=400,
-            detail="Not enough questions available for the selected topic and difficulty",
+    if payload.topic == "Mixed":
+        selected_questions = selected_mixed_random_questions(db, payload.difficulty, payload.question_count)
+        question_ids = [question.id for question in selected_questions]
+    else:
+
+        questions_filtered = (
+            db.query(Question)
+            .filter(Question.topic == payload.topic)
+            .filter(Question.difficulty == payload.difficulty)
+            .all()
         )
+        if len(questions_filtered) < payload.question_count:
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough questions available for the selected topic and difficulty",
+            )
+        selected_questions = random.sample(questions_filtered, payload.question_count)
+        question_ids = [question.id for question in selected_questions]
     # create new interview session in database
-    selected_questions = random.sample(questions_filtered, payload.question_count)
-    question_ids = [question.id for question in selected_questions]
+
     interview_session = InterviewSession(
         user_id=user.id,
         topic=payload.topic,
