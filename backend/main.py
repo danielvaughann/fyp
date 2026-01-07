@@ -21,7 +21,7 @@ import random
 from models import Answer
 from datetime import datetime, timezone
 from fastapi.staticfiles import StaticFiles # allow browser to request mp3 files
-from tts import generate_tts_audio
+from tts import generate_tts_audio, generate_OPENAI_tts_audio
 from stt import router as stt_router
 from grading import roberta_cosine_grading
 from groq import generate_feedback, generate_overall_feedback
@@ -173,12 +173,8 @@ def submit_answer(
     score = int(round(sim * 100))
 
     print("LLM starting single question feedback generation")
-    feedback = generate_feedback(
-        question_text=question.text,
-        reference_answer=question.reference_answer,
-        transcript=payload.transcript,
-        score=score,
-    )
+
+   # feedback = generate_feedback(question_text=question.text, reference_answer=question.reference_answer, transcript=payload.transcript,score=score,)
     print("LLM stopping single question feedback generation")
 
     answer = Answer(
@@ -186,7 +182,7 @@ def submit_answer(
         question_id=question_id,
         transcript=payload.transcript,
         score=score,
-        feedback=feedback,
+        feedback="TODO: change this to feedback variable",
     )
     db.add(answer)
 
@@ -226,7 +222,9 @@ def submit_answer(
             "answers": summary,
         }
         print("LLM starting OVERALL question feedback generation")
-        interview_session.overall_feedback = generate_overall_feedback(summary_object)
+        #interview_session.overall_feedback = generate_overall_feedback(summary_object)
+        interview_session.overall_feedback = "TODO: change this to overall feedback variable"
+
         print("LLM starting OVERALL question feedback generation")
 
     db.commit()
@@ -311,7 +309,8 @@ def get_current_question(
         raise HTTPException(status_code=500, detail="Question not found")
 
     #create mp3 file for question
-    audio_url = generate_tts_audio(question.text)
+    #audio_url = generate_tts_audio(question.text)
+    audio_url = generate_OPENAI_tts_audio(question.text)
 
     return {
         "done": False,
