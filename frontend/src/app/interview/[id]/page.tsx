@@ -3,13 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import {useMicVAD} from "@ricky0123/vad-react"
-
-import * as ort from "onnxruntime-web";
-
-ort.env.wasm.simd = false;
-ort.env.wasm.numThreads = 1;
-
 // define structure of api response
 type CurrentResponse = {
     done: boolean;
@@ -23,6 +16,9 @@ type CurrentResponse = {
         audio_url?: string; //tts file url
     };
 };
+
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+type IntervalHandle = ReturnType<typeof setInterval>;
 // main component exported from this file
 export default function InterviewPage() {
     const router = useRouter();
@@ -30,6 +26,7 @@ export default function InterviewPage() {
     const params = useParams<{ id: string }>();
     const sessionId = params.id;
 
+    // interview state
     const [current, setCurrent] = useState<CurrentResponse | null>(null); // current question data
     const [answer, setAnswer] = useState("");
     const [error, setError] = useState("");
@@ -47,20 +44,11 @@ export default function InterviewPage() {
     const [isTranscribing, setIsTranscribing] = useState(false); // if transcription is in progress
 
     //ui
-    const [mode, setMode] = useState<"voice" | "text">("voice");  // answering with voice or text (testing purposes)
-    const [previousTranscript, setPreviousTranscript] = useState(""); // previous transcribed text
     const [autoSubmit, setAutoSubmit] = useState(true); // auto submit after voice transcription
+    const [showBackupControls, setShowBackupControls] = useState(false); //show buttons if vad isnt working
+    // timer to delay stopping mic after speech ends
+    const stopTimerRef = useRef<TimeoutHandle | null>(null);
 
-    // ✅ CHANGED: small VAD UI state (no button required)
-    const [isListening, setIsListening] = useState(false);
-
-    // ✅ CHANGED: backup toggle (optional controls hidden by default)
-    const [showBackupControls, setShowBackupControls] = useState(false);
-
-    // ✅ CHANGED: stop delay timer to avoid chopping last syllable
-    const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const [showBackup, setShowBackup] = useState(false);
 
 
     // get current question from api
@@ -118,6 +106,7 @@ export default function InterviewPage() {
         // stop any current audio playing
         if (audioRef.current) {
             audioRef.current.pause();
+            audioRef.current.currentTime=0;
         }
 
         //create new audio element and play
@@ -131,6 +120,7 @@ export default function InterviewPage() {
         audio.play().catch(() => {
             //if autoplay blocked is blocked manual play button appears
             setAutoPlayBlocked(true);
+            setIsTtsPlaying(false)
         });
 
         //cleanup by pausing audio when component unmounts
@@ -193,7 +183,7 @@ export default function InterviewPage() {
             setAnswer(transcript) // put answer into text box
 
             //autosubmit for voice
-            if (mode === "voice" && autoSubmit) {
+            if (autoSubmit) {
                 await submitTranscribedAnswer(transcript);
             }
         } catch {
@@ -289,60 +279,157 @@ export default function InterviewPage() {
         loadCurrentQuestion();
     }
 
-    const vad = useMicVAD({
-        startOnLoad: false,
+    // detect voice
+    function useVad({onSpeechStart, onSpeechEnd}: {
 
-        onSpeechStart: () => {
-            if (!current?.question) return
-            if (isTtsPlaying) return
-            console.log("VAD started")
+        //callback functions
+        onSpeechStart: () => void;
+        onSpeechEnd: () => void
+    }) {
 
-            setIsListening(true)
+        // is the vad listening?
+        const [listening, setListening] = useState(false);
 
-            if (stopTimerRef.current) {
-                clearTimeout(stopTimerRef.current)
-                stopTimerRef.current = null
-            }
+        //microphone and web audio references
+        const streamRefVad = useRef<MediaStream | null>(null); // microphone stream
+        const analyserRef = useRef<AnalyserNode | null>(null); // analyses audio data
+        const audioCtxRef = useRef<AudioContext | null>(null);
+        const intervalRef = useRef<IntervalHandle | null>(null); // controls 100ms interval
 
-            // dont wait for returned promise
-            void startRecording()
+        // voice active state
+        const vadRef = useRef({speaking: false, silenceCount: 0});
 
-        },
-        onSpeechEnd: () => {
-            console.log("Starting x second countdown of speech ending")
-            setIsListening(false);
-            if (stopTimerRef.current) return
-            stopTimerRef.current = setTimeout(() => {
-                console.log("Stopping recording")
-                stopRecording()
-                stopTimerRef.current = null;
+        // vad begins to listen
+        const start = async () => {
+            if (listening) return;
 
-            }, 700);
-        },
+            // gets microphone access
+            const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+            streamRefVad.current = stream;
 
-        onVADMisfire: () => {
-            console.log("Vad misfire")
-            setIsListening(false);
-        },
-    });
-    useEffect(() => {
-            const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying
-            console.log("VAD should run:", shouldRun)
-            if (shouldRun) {
-                vad.start();
-            } else {
-                vad.pause();
-            }
-            return () => {
-                vad.pause();
-                if (stopTimerRef.current) {
-                    clearTimeout(stopTimerRef.current)
-                    stopTimerRef.current = null
+           //webAudio api
+            const audioContext = new AudioContext();
+            audioCtxRef.current = audioContext;
+
+            // analyser node to process audio
+            const analyser = audioContext.createAnalyser();
+            analyserRef.current = analyser;
+
+            // connect microphone to analyser
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyser);
+
+            // control numberr of frequency bins
+            analyser.fftSize = 256;
+
+            // vad is running
+            setListening(true);
+
+
+            // check volume at 100ms intervals
+            const checkVolume = () => {
+                if (!analyserRef.current) return;
+
+                //buffer to recieve frequency data
+                const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+
+                //fills each frequency bin with data
+                analyserRef.current.getByteFrequencyData(dataArray);
+
+                // calculate average volume of all bins
+                const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+
+                // noise threshold
+                const isSpeaking = volume > 20;
+
+                // silence to speaking transition
+                if (isSpeaking && !vadRef.current.speaking) {
+                    // speaking mode
+                    vadRef.current.speaking = true;
+                    vadRef.current.silenceCount = 0
+                    onSpeechStart()
+
+                    // silence interval
+                } else if (!isSpeaking && vadRef.current.speaking) {
+                    vadRef.current.silenceCount++
+                    if (vadRef.current.silenceCount > 10) { // 3 intervals of silence
+                        vadRef.current.speaking = false;
+                        onSpeechEnd()
+                    }
                 }
-            };
+                // reset silence counter if speaking continues
+                if(isSpeaking && vadRef.current.speaking){
+                    vadRef.current.silenceCount = 0
+                }
+            }
+            intervalRef.current = setInterval(checkVolume, 100);
 
-        }, [current?.question, isTtsPlaying, isTranscribing]
-    );
+        }
+
+
+        const stop = () => {
+            //stop interval if running
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+
+            //stop microphone and audio references
+            streamRefVad.current?.getTracks().forEach(track => track.stop());
+            streamRefVad.current = null
+            analyserRef.current = null
+            audioCtxRef.current?.close().catch(() => {});
+            audioCtxRef.current = null
+
+            // reset vad state
+            vadRef.current = {speaking: false, silenceCount: 0}
+
+            setListening(false);
+
+        }
+        return {listening, start, stop}
+    }
+
+            const vad = useVad({
+             onSpeechStart: () => {
+              // reset stop timer if speech starts again
+              if (stopTimerRef.current) {
+                clearTimeout(stopTimerRef.current);
+                stopTimerRef.current = null;
+              }
+
+              //start recording
+              if (current?.question && !isTranscribing && !isTtsPlaying && !isRecording) {
+                console.log("VAD started");
+                startRecording();
+              }
+            },
+
+                onSpeechEnd: () => {
+                    console.log("Starting x second countdown of speech ending")
+                    if (stopTimerRef.current) return
+
+                    //wait to stop timer not to cut user off
+                    stopTimerRef.current = setTimeout(() => {
+                        console.log("Stopping recording")
+                        stopRecording()
+                        stopTimerRef.current = null;
+
+                    }, 700);
+                }
+            });
+
+            useEffect(() => {
+                    const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying
+                    console.log("VAD should run:")
+                    if (shouldRun && !vad.listening) {
+                        vad.start();
+                    } else if (!shouldRun && vad.listening) {
+                        vad.stop();
+                    }
+
+                }, [current?.question, isTtsPlaying, isTranscribing]
+            );
     return (
         <div className="page">
             <h2>Interview</h2>
@@ -375,7 +462,7 @@ export default function InterviewPage() {
                             <p style={{marginTop: 6}}>Your browser blocked autoplay</p>
                         )}
                         <div style={{marginTop: 10}}>
-                            <p>Listening: {isListening ? "YES" : "no"}</p>
+                            <p>Listening: {vad.listening ? "YES" : "no"}</p>
                             <p>Recording: {isRecording ? "YES" : "no"}</p>
                             <p>Transcribing: {isTranscribing ? "YES" : "no"}</p>
                             <p>TTS Playing: {isTtsPlaying ? "YES" : "no"}</p>
@@ -428,7 +515,7 @@ export default function InterviewPage() {
 
                                     <button
                                         type="button"
-                                        onClick={() => vad.pause()}
+                                        onClick={() => vad.stop()}
                                         style={{marginLeft: 8}}
                                     >
                                         Pause VAD (backup)

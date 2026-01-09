@@ -177,7 +177,9 @@ def submit_answer(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
+    #sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
+    #TODO uncomment abouve
+    sim=0.5
     score = int(round(sim * 100))
 
     print("LLM starting single question feedback generation")
