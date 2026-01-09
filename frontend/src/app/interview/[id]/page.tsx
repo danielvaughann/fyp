@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import {useMicVAD} from "@ricky0123/vad-react"
+
+import * as ort from "onnxruntime-web";
+
+ort.env.wasm.simd = false;
+ort.env.wasm.numThreads = 1;
+
 // define structure of api response
 type CurrentResponse = {
     done: boolean;
@@ -30,6 +37,7 @@ export default function InterviewPage() {
     //tts
     const audioRef = useRef<HTMLAudioElement | null>(null);  // reference to audio element between renders for tts
     const [autoPlayBlocked, setAutoPlayBlocked] = useState(false); //tracks if browser blocks autoplay
+    const [isTtsPlaying, setIsTtsPlaying] = useState(false); // if tts audio is playing
 
     //stt
     const recorderRef = useRef<MediaRecorder | null>(null); // media recorder reference for recording audio
@@ -41,7 +49,19 @@ export default function InterviewPage() {
     //ui
     const [mode, setMode] = useState<"voice" | "text">("voice");  // answering with voice or text (testing purposes)
     const [previousTranscript, setPreviousTranscript] = useState(""); // previous transcribed text
-    const [autoSubmit,setAutoSubmit] = useState(true); // auto submit after voice transcription
+    const [autoSubmit, setAutoSubmit] = useState(true); // auto submit after voice transcription
+
+    // ✅ CHANGED: small VAD UI state (no button required)
+    const [isListening, setIsListening] = useState(false);
+
+    // ✅ CHANGED: backup toggle (optional controls hidden by default)
+    const [showBackupControls, setShowBackupControls] = useState(false);
+
+    // ✅ CHANGED: stop delay timer to avoid chopping last syllable
+    const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const [showBackup, setShowBackup] = useState(false);
+
 
     // get current question from api
     async function loadCurrentQuestion() {
@@ -89,30 +109,35 @@ export default function InterviewPage() {
 
     // tts plays next question when a new question url loads
     useEffect(() => {
-      const audioUrl = current?.question?.audio_url;
-      if (!audioUrl) return;
+        const audioUrl = current?.question?.audio_url;
+        if (!audioUrl) return;
 
-      //allow autoplay
-      setAutoPlayBlocked(false)
+        //allow autoplay
+        setAutoPlayBlocked(false)
 
-      // stop any current audio playing
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+        // stop any current audio playing
+        if (audioRef.current) {
+            audioRef.current.pause();
+        }
 
-      //create new audio element and play
-      const audio = new Audio(`http://localhost:8000${audioUrl}`);
-      audioRef.current = audio;
+        //create new audio element and play
+        const audio = new Audio(`http://localhost:8000${audioUrl}`);
+        audioRef.current = audio;
 
-      audio.play().catch(() => {
-        //if autoplay blocked is blocked manual play button appears
-        setAutoPlayBlocked(true);
-      });
+        // record if tts is playing so vad doesnt start while interviewer is speaking
+        setIsTtsPlaying(true)
+        audio.onended = () => setIsTtsPlaying(false)
 
-      //cleanup by pausing audio when component unmounts
-      return () => {
-        audio.pause();
-      };
+        audio.play().catch(() => {
+            //if autoplay blocked is blocked manual play button appears
+            setAutoPlayBlocked(true);
+        });
+
+        //cleanup by pausing audio when component unmounts
+        return () => {
+            audio.pause();
+            setIsTtsPlaying(false)
+        };
     }, [current?.question?.audio_url]); // runs when url changes
 
     //stop mircophonne
@@ -127,8 +152,9 @@ export default function InterviewPage() {
         if (recorderRef.current.state !== "inactive")
             recorderRef.current.stop();
     }
+
     //uploads audio blob to bakcend api for transcription
-    async function uploadAndTranscribe(blob:Blob) {
+    async function uploadAndTranscribe(blob: Blob) {
         setIsTranscribing(true);
         setError("");
 
@@ -167,7 +193,7 @@ export default function InterviewPage() {
             setAnswer(transcript) // put answer into text box
 
             //autosubmit for voice
-            if(mode === "voice" && autoSubmit){
+            if (mode === "voice" && autoSubmit) {
                 await submitTranscribedAnswer(transcript);
             }
         } catch {
@@ -179,11 +205,12 @@ export default function InterviewPage() {
     /// stt recording
     // recording using media recorder
     async function startRecording() {
+        if (isRecording || isTranscribing || isTtsPlaying) return;
         setError("")
 
-        try{
+        try {
             // request microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia({audio: true});
             streamRef.current = stream;
 
             //media recorder to capture audio from stream
@@ -198,28 +225,29 @@ export default function InterviewPage() {
                 if (event.data.size > 0) {
                     chunksRef.current.push(event.data);
                 }
-        }
+            }
             recorder.onstop = async () => {
-              stopMic();
-              //create blob of audio chunks
-              const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-              //sends blob to backend
-              await uploadAndTranscribe(blob);
+                stopMic();
+                //create blob of audio chunks
+                const blob = new Blob(chunksRef.current, {type: recorder.mimeType});
+                //sends blob to backend
+                await uploadAndTranscribe(blob);
             };
 
             // start recording
             recorder.start();
             setIsRecording(true);
-          } catch {
+        } catch {
             setError("Microphone permission denied or recording failed");
-          }
         }
+    }
 
-    function stopRecording()    {
+    function stopRecording() {
         stopAudioRecorder();
         setIsRecording(false);
-  }
-    async function submitTranscribedAnswer(text:string) {
+    }
+
+    async function submitTranscribedAnswer(text: string) {
         setError("")
 
         const token = localStorage.getItem("token");
@@ -237,11 +265,11 @@ export default function InterviewPage() {
         const res = await fetch(`http://localhost:8000/interview/${sessionId}/answer`, {
             method: "POST",
             headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`,},
-            body: JSON.stringify({ transcript: text }),
+            body: JSON.stringify({transcript: text}),
         });
 
         const data = await res.json().catch(() => ({}));
-        if(!res.ok) {
+        if (!res.ok) {
             let message = "Failed to submit answer";
             if (typeof data.detail === "string") {
                 message = data.detail;
@@ -261,105 +289,175 @@ export default function InterviewPage() {
         loadCurrentQuestion();
     }
 
-    return (
-      <div className="page">
-        <h2>Interview</h2>
-          {/*  */}
-        {error && <p className="error">{error}</p>}
-        {!current && <p>Loading...</p>}
-          {/* main interview page  */}
-        {current && current.question && (
-          <>
-            <div>
-                {/* question counter  */}
-              <p>
-                Question {(current.index ?? 0) + 1} / {current.total ?? "?"}
-              </p>
-              <p>{current.question.text}</p>
-                <p>{current.question.topic}</p>
-              <textarea
-                value={answer}
-                onChange={(e) => setAnswer((e.target as HTMLTextAreaElement).value)}
-                rows={6}
-                cols={60}
-                disabled={mode === "voice" && autoSubmit}
-              />
-              <br />
-                {/* manually replay audio */}
-              <button onClick={submitAnswer}>Submit Answer</button>
-              <button
-                onClick={() => {
-                  const audio_file = audioRef.current;
-                  if (!audio_file) return;
+    const vad = useMicVAD({
+        startOnLoad: false,
 
-                  audio_file.currentTime = 0;
-                  audio_file.play().catch(() => {
-                    // autoplay blocked — show message
-                    setAutoPlayBlocked(true);
-                  });
-                }}
-              >
-                Play question audio
-              </button>
-              {autoPlayBlocked && (
-                <p style={{ marginTop: 6 }}>Your browser blocked autoplay</p>
-              )}
-            </div>
-            <div style={{ marginTop: 10, marginBottom: 10 }}>
-                {/* button disables itself once clicked */}
-              <button
-                type="button"
-                onClick={() => setMode("voice")}
-                disabled={mode === "voice"}
-              >
-                Voice Mode
-              </button>
+        onSpeechStart: () => {
+            if (!current?.question) return
+            if (isTtsPlaying) return
+            console.log("VAD started")
 
-              <button
-                type="button"
-                onClick={() => setMode("text")}
-                disabled={mode === "text"}
-                style={{ marginLeft: 8 }}
-              >
-                Text Mode
-              </button>
+            setIsListening(true)
 
-              {mode === "voice" && (
-                <label style={{ marginLeft: 12 }}>
-                  <input
-                    type="checkbox"
-                    checked={autoSubmit}
-                    onChange={(e) => setAutoSubmit(e.target.checked)}
-                  />
-                  Auto-submit after transcription
-                </label>
-              )}
-            </div>
-            {mode === "voice" && (
-                <>
-                    <div style={{marginTop: 10}}>
-                        {!isRecording && (
-                            <button type="button" onClick={startRecording} disabled={isTranscribing}>
-                                Start Answer (Voice)
-                            </button>
-                        )}
+            if (stopTimerRef.current) {
+                clearTimeout(stopTimerRef.current)
+                stopTimerRef.current = null
+            }
 
-                        {isRecording && (
-                            <button type="button" onClick={stopRecording}>
-                                Stop Answer
-                            </button>
-                        )}
+            // dont wait for returned promise
+            void startRecording()
 
-                        {isTranscribing && <p style={{marginTop: 6}}>Transcribing...</p>}
-                    </div>
+        },
+        onSpeechEnd: () => {
+            console.log("Starting x second countdown of speech ending")
+            setIsListening(false);
+            if (stopTimerRef.current) return
+            stopTimerRef.current = setTimeout(() => {
+                console.log("Stopping recording")
+                stopRecording()
+                stopTimerRef.current = null;
 
-                </>
+            }, 700);
+        },
 
-            )}
+        onVADMisfire: () => {
+            console.log("Vad misfire")
+            setIsListening(false);
+        },
+    });
+    useEffect(() => {
+            const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying
+            console.log("VAD should run:", shouldRun)
+            if (shouldRun) {
+                vad.start();
+            } else {
+                vad.pause();
+            }
+            return () => {
+                vad.pause();
+                if (stopTimerRef.current) {
+                    clearTimeout(stopTimerRef.current)
+                    stopTimerRef.current = null
+                }
+            };
 
-
-          </>
-        )}
-      </div>
+        }, [current?.question, isTtsPlaying, isTranscribing]
     );
+    return (
+        <div className="page">
+            <h2>Interview</h2>
+            {/*  */}
+            {error && <p className="error">{error}</p>}
+            {!current && <p>Loading...</p>}
+            {/* main interview page  */}
+            {current && current.question && (
+                <>
+                    <div>
+                        {/* question counter  */}
+                        <p>
+                            Question {(current.index ?? 0) + 1} / {current.total ?? "?"}
+                        </p>
+                        <p>{current.question.text}</p>
+                        <p>{current.question.topic}</p>
+                        <textarea
+                            value={answer}
+                            onChange={(e) => setAnswer((e.target as HTMLTextAreaElement).value)}
+                            rows={6}
+                            cols={60}
+                            disabled={autoSubmit}
+                        />
+                        <br/>
+                        <button onClick={submitAnswer}>Submit Answer</button>
+
+
+
+                        {autoPlayBlocked && (
+                            <p style={{marginTop: 6}}>Your browser blocked autoplay</p>
+                        )}
+                        <div style={{marginTop: 10}}>
+                            <p>Listening: {isListening ? "YES" : "no"}</p>
+                            <p>Recording: {isRecording ? "YES" : "no"}</p>
+                            <p>Transcribing: {isTranscribing ? "YES" : "no"}</p>
+                            <p>TTS Playing: {isTtsPlaying ? "YES" : "no"}</p>
+                        </div>
+
+                        <div style={{marginTop: 10}}>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={autoSubmit}
+                                    onChange={(e) => setAutoSubmit(e.target.checked)}
+                                />
+                                Auto-submit after transcription
+                            </label>
+                        </div>
+
+                        <div style={{marginTop: 10}}>
+                            <button
+                                type="button"
+                                onClick={() => setShowBackupControls((v) => !v)}
+                            >
+                                {showBackupControls ? "Hide backup controls" : "Show backup controls"}
+                            </button>
+
+                            {showBackupControls && (
+                                <div style={{marginTop: 8}}>
+                                    {!isRecording && (
+                                        <button
+                                            type="button"
+                                            onClick={startRecording}
+                                            disabled={isTranscribing || isTtsPlaying}
+                                        >
+                                            Start recording (backup)
+                                        </button>
+                                    )}
+
+                                    {isRecording && (
+                                        <button type="button" onClick={stopRecording}>
+                                            Stop recording (backup)
+                                        </button>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={() => vad.start()}
+                                        style={{marginLeft: 8}}
+                                    >
+                                        Start VAD (backup)
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => vad.pause()}
+                                        style={{marginLeft: 8}}
+                                    >
+                                        Pause VAD (backup)
+                                    </button>
+                                    <button
+                                    onClick={() => {
+                                        const audio_file = audioRef.current;
+                                        if (!audio_file) return;
+                                        setIsTtsPlaying(true)
+
+                                        audio_file.currentTime = 0;
+                                        audio_file.play().catch(() => {
+                                            // autoplay blocked — show message
+                                            setAutoPlayBlocked(true);
+                                            setIsTtsPlaying(false)
+                                        });
+                                    }}
+                                >
+                                    Play question audio
+                                     </button>
+
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+
+    );
+
 }
