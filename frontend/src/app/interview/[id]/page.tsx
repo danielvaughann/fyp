@@ -421,7 +421,7 @@ export default function InterviewPage() {
 
             useEffect(() => {
                     const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying
-                    console.log("VAD should run:")
+                    //console.log("VAD should run:")
                     if (shouldRun && !vad.listening) {
                         vad.start();
                     } else if (!shouldRun && vad.listening) {

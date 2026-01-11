@@ -177,14 +177,14 @@ def submit_answer(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    #sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
+    sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
     #TODO uncomment abouve
-    sim=0.5
+
     score = int(round(sim * 100))
 
     print("LLM starting single question feedback generation")
 
-   # feedback = generate_feedback(question_text=question.text, reference_answer=question.reference_answer, transcript=payload.transcript,score=score,)
+    feedback = generate_feedback(question_text=question.text, reference_answer=question.reference_answer, transcript=payload.transcript,score=score,)
     print("LLM stopping single question feedback generation")
 
     answer = Answer(
@@ -192,7 +192,7 @@ def submit_answer(
         question_id=question_id,
         transcript=payload.transcript,
         score=score,
-        feedback="TODO: change this to feedback variable",
+        feedback=feedback,
     )
     db.add(answer)
 
@@ -232,8 +232,8 @@ def submit_answer(
             "answers": summary,
         }
         print("LLM starting OVERALL question feedback generation")
-        #interview_session.overall_feedback = generate_overall_feedback(summary_object)
-        interview_session.overall_feedback = "TODO: change this to overall feedback variable"
+        interview_session.overall_feedback = generate_overall_feedback(summary_object)
+        #interview_session.overall_feedback = "TODO: change this to overall feedback variable"
 
         print("LLM starting OVERALL question feedback generation")
 
