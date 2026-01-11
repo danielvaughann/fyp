@@ -5,6 +5,9 @@ import subprocess
 from fastapi import File, UploadFile, HTTPException, APIRouter
 from faster_whisper import WhisperModel
 
+import shutil
+import os
+
 # router for stt endpoints
 router = APIRouter()
 #small memory effiecient model of faster whisper
@@ -15,7 +18,14 @@ TMP_DIR = "temporary_audio"
 os.makedirs(TMP_DIR, exist_ok=True)
 
 # path to my ffmpeg
-FFMPEG_PATH = r"C:\Users\User\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe"
+#FFMPEG_PATH = r"C:\Users\User\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe"
+
+FFMPEG_PATH = shutil.which("ffmpeg")
+if not FFMPEG_PATH:
+    raise RuntimeError(
+        "FFmpeg not found"
+    )
+print("Using FFmpeg:", FFMPEG_PATH)
 
 # convert audio to wav using ffmpeg (best format for whisper)
 def convert_to_wav(input_file: str, output_file: str):
