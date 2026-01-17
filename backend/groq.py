@@ -1,4 +1,5 @@
 import os
+import json
 from openai import OpenAI
 from dotenv import load_dotenv
 load_dotenv()
@@ -7,74 +8,92 @@ client = OpenAI(
     api_key= os.getenv("GROQ_API"),
     base_url="https://api.x.ai/v1"
 )
+
+
 def generate_feedback(question_text: str, reference_answer: str, transcript: str, score: int) -> str:
     messages = [
         {
             #set rules and behaviour
             "role": "system",
             "content": (
-                "You are an expert interview coach. \n"
-                "Rules: \n"
-                "- Base your conclusions only on the provided session JSON.\n"
-                "- Be specific: mention recurring issues (e.g., missing definition, vague explanation).\n"
-                "- Avoid generic advice. Provide actionable advice.\n"
-                "- Output MUST be valid JSON only (no markdown).\n"
+                "You are an expert interview coach. "
+                "Write app-ready feedback in plain text. "
+                "No JSON, no markdown, no headings. "
+                "Keep it concise and professional."
+
             ),
         },
         {
             #request content
             "role": "user",
             "content": (
-                "You are given a question, reference answer, user's answer(transcript), and a score (0-100). "
-                f"Question:\n{question_text}\n\n"
-                f"Reference Answer:\n{reference_answer}\n\n"
-                f"User's Answer:\n{transcript}\n\n"
-                f"Score (0-100): {score}\n\n"
-                "Write 2-4 sentences of feedback based on the users answer."
-                "Mention what they did good and what could be improved."
-                "Be concise and specific"
-            ),
+                "Write feedback in plain text for an app.\n"
+                "Output format MUST be exactly:\n"
+                "What went well:\n"
+                "- <bullet>\n"
+                "Needs work:\n"
+                "- <bullet>\n"
+                "- <bullet>\n"
+                "Next step: <1 sentence>\n\n"
+                "Rules:\n"
+                "- Bullets short (max 12 words).\n"
+                "- Be specific to the user's answer.\n"
+                "- No extra sections.\n\n"
+                f"Question: {question_text}\n"
+                f"Reference answer: {reference_answer}\n"
+                f"User answer: {transcript}\n"
+                f"Score: {score}/100\n"
+            )
+
         },
     ]
     chat_completion = client.chat.completions.create(
         model = "grok-3-mini",
         messages = messages,
         max_tokens = 140,
+        temperature = 0.3
     )
     return chat_completion.choices[0].message.content.strip()
 
 def generate_overall_feedback(overall_feedback: list) -> str:
     messages = [
         {
-            "role": "system",
-            "content": (
-            "You are an expert interview coach. \n"
-            "Rules: \n"
-            "- Base your conclusions only on the provided session JSON.\n"
-            "- Be specific: mention recurring issues (e.g., missing definition, vague explanation).\n"
-            "- Avoid generic advice. Provide actionable advice.\n"
-            "- Output MUST be valid JSON only (no markdown).\n"
-            ),
+
+                # set rules and behaviour
+                "role": "system",
+                "content": (
+                    "You are an expert interview coach. "
+                    "Write app-ready overall feedback in plain text. "
+                    "No JSON, no markdown, no headings. "
+                    "Use short paragraphs and simple sentences."
+                ),
         },
         {
             "role": "user",
             "content": (
-                "Here is the whole interview as JSON. For each question it contains, reference answer, user answer, and score (0-100):\n\n"
-                f"{overall_feedback}\n\n"
-                "Write:\n"
-                "1: A brief summary of the overall performance"
-                "2: Common strengths across the answers - as bullet points"
-                "3: Common areas for improvement across the answers -as bullet points"
-                "Next steps to improve or what to practice on"
-                "Be concise and specific."
+                "Write overall feedback in plain text for an app.\n"
+                "Output format MUST be exactly:\n"
+                "Summary: <2-3 sentences>\n"
+                "Strengths:\n"
+                "- <bullet>\n"
+                "- <bullet>\n"
+                "Improvements:\n"
+                "- <bullet>\n"
+                "- <bullet>\n"
+                "Next step: <1 sentence>\n\n"
+                "Rules:\n"
+                "- Keep bullets short (max 12 words).\n"
+                "- No extra sections.\n\n"
+                f"Session JSON:\n{json.dumps(overall_feedback, ensure_ascii=True)}"
+            )
 
-            ),
         },
     ]
     chat_completion_overall = client.chat.completions.create(
         model = "grok-3-mini",
         messages = messages,
-        max_tokens = 400,
+        max_tokens = 250,
+        temperature = 0.3
     )
     return chat_completion_overall.choices[0].message.content.strip()
 

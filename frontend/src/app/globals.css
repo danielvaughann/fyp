@@ -49,6 +49,12 @@ body {
   color: var(--primary);
 }
 
+.header-actions {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
 .form-container {
   background: var(--card-bg);
   padding: 32px;

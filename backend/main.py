@@ -232,10 +232,12 @@ def submit_answer(
             "answers": summary,
         }
         print("LLM starting OVERALL question feedback generation")
-        interview_session.overall_feedback = generate_overall_feedback(summary_object)
+       # interview_session.overall_feedback = generate_overall_feedback(summary_object)
+        interview_session.overall_feedback = generate_overall_feedback(summary_object["answers"])
+
         #interview_session.overall_feedback = "TODO: change this to overall feedback variable"
 
-        print("LLM starting OVERALL question feedback generation")
+        print("LLM stopping OVERALL question feedback generation")
 
     db.commit()
     return{"ok":True, "completed": interview_session.status == "completed"}

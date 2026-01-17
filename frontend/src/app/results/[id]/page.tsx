@@ -77,7 +77,10 @@ export default function ResultsPage() {
     <div className="page">
       <div className="header">
         <h1>Interview Simulator</h1>
-        <button onClick={logout}>Logout</button>
+        <div className="header-actions">
+          <button onClick={() => router.push("/dashboard")}>Dashboard</button>
+          <button onClick={logout}>Logout</button>
+        </div>
       </div>
 
       <div className="form-container" style={{ marginTop: 24, maxWidth: 800 }}>
@@ -98,7 +101,9 @@ export default function ResultsPage() {
               {summary.session.overall_feedback && (
                 <div style={{ marginTop: 12, marginBottom: 12 }}>
                   <h3>Overall feedback</h3>
-                  <p>{summary.session.overall_feedback}</p>
+                  <p style={{ whiteSpace: "pre-line" }}>
+                     {summary.session.overall_feedback}
+                    </p>
                   <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
                  </div>
               )}
@@ -107,7 +112,10 @@ export default function ResultsPage() {
               <div key={idx} style={{ marginBottom: 20 }}>
                 <p><b>Q:</b> {answer_map.question_text}</p>
                 <p><b>Your answer:</b> {answer_map.transcript}</p>
-                <p><b>Feedback:</b> {answer_map.feedback}</p>
+                  <br></br>
+               <p style={{ whiteSpace: "pre-line" }}>
+                   {answer_map.feedback}
+                </p>
                 <p>
                   <b>Score:</b>{" "}
                   <span
