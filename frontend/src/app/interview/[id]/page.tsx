@@ -45,7 +45,6 @@ export default function InterviewPage() {
 
     //ui
     const [autoSubmit, setAutoSubmit] = useState(true); // auto submit after voice transcription
-    const [showBackupControls, setShowBackupControls] = useState(false); //show buttons if vad isnt working
     // timer to delay stopping mic after speech ends
     const stopTimerRef = useRef<TimeoutHandle | null>(null);
 
@@ -430,119 +429,69 @@ export default function InterviewPage() {
 
                 }, [current?.question, isTtsPlaying, isTranscribing]
             );
+
+    function logout() {
+        localStorage.removeItem("token");
+        router.push("/login");
+    }
+
     return (
         <div className="page">
-            <h2>Interview</h2>
-            {/*  */}
-            {error && <p className="error">{error}</p>}
-            {!current && <p>Loading...</p>}
-            {/* main interview page  */}
-            {current && current.question && (
-                <>
-                    <div>
-                        {/* question counter  */}
-                        <p>
-                            Question {(current.index ?? 0) + 1} / {current.total ?? "?"}
-                        </p>
-                        <p>{current.question.text}</p>
-                        <p>{current.question.topic}</p>
-                        <textarea
-                            value={answer}
-                            onChange={(e) => setAnswer((e.target as HTMLTextAreaElement).value)}
-                            rows={6}
-                            cols={60}
-                            disabled={autoSubmit}
-                        />
-                        <br/>
-                        <button onClick={submitAnswer}>Submit Answer</button>
+            <div className="header">
+                <h1>Interview Simulator</h1>
+                <button onClick={logout}>Logout</button>
+            </div>
 
+            <div className="form-container" style={{ marginTop: 24 }}>
+                <h2>Interview</h2>
+                {/*  */}
+                {error && <p className="error">{error}</p>}
+                {!current && <p>Loading...</p>}
+                {/* main interview page  */}
+                {current && current.question && (
+                    <>
+                        <div>
+                            {/* question counter  */}
+                            <p style={{ marginBottom: 16 }}>
+                                Question {(current.index ?? 0) + 1} / {current.total ?? "?"}
+                            </p>
+                            <p style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>{current.question.text}</p>
+                            <p className="muted" style={{ marginBottom: 16 }}>{current.question.topic}</p>
 
+                            {autoPlayBlocked && (
+                                <p style={{ marginTop: 6, color: "var(--error)" }}>Your browser blocked autoplay</p>
+                            )}
+                            <div style={{ marginTop: 16, padding: 12, background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)" }}>
+                                <p className="muted" style={{ fontSize: 13 }}>Listening: {vad.listening ? "YES" : "no"}</p>
+                                <p className="muted" style={{ fontSize: 13 }}>Recording: {isRecording ? "YES" : "no"}</p>
+                                <p className="muted" style={{ fontSize: 13 }}>Transcribing: {isTranscribing ? "YES" : "no"}</p>
+                                <p className="muted" style={{ fontSize: 13 }}>TTS Playing: {isTtsPlaying ? "YES" : "no"}</p>
+                            </div>
 
-                        {autoPlayBlocked && (
-                            <p style={{marginTop: 6}}>Your browser blocked autoplay</p>
-                        )}
-                        <div style={{marginTop: 10}}>
-                            <p>Listening: {vad.listening ? "YES" : "no"}</p>
-                            <p>Recording: {isRecording ? "YES" : "no"}</p>
-                            <p>Transcribing: {isTranscribing ? "YES" : "no"}</p>
-                            <p>TTS Playing: {isTtsPlaying ? "YES" : "no"}</p>
-                        </div>
+                            <div style={{ marginTop: 16 }}>
+                                <label style={{ display: "flex", alignItems: "center", fontSize: 14 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={autoSubmit}
+                                        onChange={(e) => setAutoSubmit(e.target.checked)}
+                                        style={{ width: "auto", marginRight: 8, marginBottom: 0 }}
+                                    />
+                                    Auto-submit after transcription
+                                </label>
+                            </div>
 
-                        <div style={{marginTop: 10}}>
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={autoSubmit}
-                                    onChange={(e) => setAutoSubmit(e.target.checked)}
-                                />
-                                Auto-submit after transcription
-                            </label>
-                        </div>
-
-                        <div style={{marginTop: 10}}>
                             <button
                                 type="button"
-                                onClick={() => setShowBackupControls((v) => !v)}
+                                onClick={stopRecording}
+                                disabled={!isRecording}
+                                style={{ width: "100%", marginTop: 16 }}
                             >
-                                {showBackupControls ? "Hide backup controls" : "Show backup controls"}
+                                Stop Recording
                             </button>
-
-                            {showBackupControls && (
-                                <div style={{marginTop: 8}}>
-                                    {!isRecording && (
-                                        <button
-                                            type="button"
-                                            onClick={startRecording}
-                                            disabled={isTranscribing || isTtsPlaying}
-                                        >
-                                            Start recording (backup)
-                                        </button>
-                                    )}
-
-                                    {isRecording && (
-                                        <button type="button" onClick={stopRecording}>
-                                            Stop recording (backup)
-                                        </button>
-                                    )}
-
-                                    <button
-                                        type="button"
-                                        onClick={() => vad.start()}
-                                        style={{marginLeft: 8}}
-                                    >
-                                        Start VAD (backup)
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => vad.stop()}
-                                        style={{marginLeft: 8}}
-                                    >
-                                        Pause VAD (backup)
-                                    </button>
-                                    <button
-                                    onClick={() => {
-                                        const audio_file = audioRef.current;
-                                        if (!audio_file) return;
-                                        setIsTtsPlaying(true)
-
-                                        audio_file.currentTime = 0;
-                                        audio_file.play().catch(() => {
-                                            // autoplay blocked — show message
-                                            setAutoPlayBlocked(true);
-                                            setIsTtsPlaying(false)
-                                        });
-                                    }}
-                                >
-                                    Play question audio
-                                     </button>
-
-                                </div>
-                            )}
                         </div>
-                    </div>
-                </>
-            )}
+                    </>
+                )}
+            </div>
         </div>
 
     );
