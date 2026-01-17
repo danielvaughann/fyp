@@ -27,6 +27,11 @@ export default function ResultsPage() {
 
     const [summary, setSummary] = useState<SummaryResponse | null>(null);
     const [error, setError] = useState("");
+
+    function logout() {
+        localStorage.removeItem("token");
+        router.push("/login");
+    }
     useEffect(() => {
         const token = localStorage.getItem("token");
         if (!token) {
@@ -63,38 +68,68 @@ export default function ResultsPage() {
 
         loadSummary();
     }, [router, sessionId]);
+
+    const averageScore = summary?.answers.length
+        ? Math.round(summary.answers.reduce((sum, a) => sum + a.score, 0) / summary.answers.length)
+        : 0;
+
   return (
-    <div>
-      <h1>Results</h1>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {!error && !summary && <p>Loading...</p>}
+    <div className="page">
+      <div className="header">
+        <h1>Interview Simulator</h1>
+        <button onClick={logout}>Logout</button>
+      </div>
 
-      {summary && (
-        <div>
-          <p><b>Topic:</b> {summary.session.topic}</p>
-          <p><b>Difficulty:</b> {summary.session.difficulty}</p>
-          <p><b>Status:</b> {summary.session.status}</p>
+      <div className="form-container" style={{ marginTop: 24, maxWidth: 800 }}>
+        <h2>Results</h2>
+        {error && <p className="error">{error}</p>}
+        {!error && !summary && <p>Loading...</p>}
 
-          <hr />
-            {summary.session.overall_feedback && (
-              <div style={{ marginTop: 12, marginBottom: 12 }}>
-                <h3>Overall feedback</h3>
-                <p>{summary.session.overall_feedback}</p>
-                <hr />
-               </div>
-            )}
-
-          {summary.answers.map((answer_map, idx) => (
-            <div key={idx} style={{ marginBottom: 20 }}>
-              <p><b>Q:</b> {answer_map.question_text}</p>
-              <p><b>Your answer:</b> {answer_map.transcript}</p>
-              <p><b>Feedback:</b> {answer_map.feedback}</p>
-              <p><b>Score:</b> {answer_map.score}%</p>
-              <hr />
+        {summary && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <p><b>Topic:</b> {summary.session.topic}</p>
+              <p><b>Difficulty:</b> {summary.session.difficulty}</p>
+              <p><b>Status:</b> {summary.session.status}</p>
+              <p><b>Average Score:</b> {averageScore}%</p>
             </div>
-          ))}
-        </div>
-      )}
+
+            <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+              {summary.session.overall_feedback && (
+                <div style={{ marginTop: 12, marginBottom: 12 }}>
+                  <h3>Overall feedback</h3>
+                  <p>{summary.session.overall_feedback}</p>
+                  <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+                 </div>
+              )}
+
+            {summary.answers.map((answer_map, idx) => (
+              <div key={idx} style={{ marginBottom: 20 }}>
+                <p><b>Q:</b> {answer_map.question_text}</p>
+                <p><b>Your answer:</b> {answer_map.transcript}</p>
+                <p><b>Feedback:</b> {answer_map.feedback}</p>
+                <p>
+                  <b>Score:</b>{" "}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      fontSize: 14,
+                      fontWeight: 500,
+                      background: "#dbeafe",
+                      color: "var(--primary)",
+                    }}
+                  >
+                    {answer_map.score}%
+                  </span>
+                </p>
+                <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

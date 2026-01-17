@@ -1,5 +1,4 @@
 "use client"
-import "./style.css"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 
@@ -13,6 +12,7 @@ export default function LoginPage() {
 
 
     async function submit() {
+        setError("");
         try {
             let res;
 
@@ -24,7 +24,32 @@ export default function LoginPage() {
                     },
                     body: JSON.stringify({email, password}),
                 });
-                alert("User registered successfully");
+                
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                  let message = "Signup failed";
+
+                  if (typeof data.detail === "string") {
+                    message = data.detail;
+                  } else if (Array.isArray(data.detail) && data.detail.length > 0) {
+                    message = data.detail[0]?.msg || message;
+                  }
+
+                  setError(message);
+                  return;
+                }
+
+                // automatically login after signup
+                const body = new URLSearchParams();
+                body.set("username", email);
+                body.set("password", password);
+
+                res = await fetch("http://localhost:8000/token", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    body,
+                });
             } else {
                 const body = new URLSearchParams();
                 body.set("username", email);
@@ -88,15 +113,15 @@ export default function LoginPage() {
     return (
         <div className="page">
             <div className="form-container">
-                <h2>{isSignup ? "SIGN UP" : "LOGIN"}</h2>
+                <h2>{isSignup ? "Sign Up" : "Login"}</h2>
 
                 <form
-                    className={isSignup ? "signup-form" : "login-form"}
                     onSubmit={(e) => {
                         e.preventDefault();
                         submit();
                     }}
                 >
+                    <label>Email</label>
                     <input
                         type="email"
                         placeholder="Email"
@@ -105,6 +130,7 @@ export default function LoginPage() {
                         required
                     />
 
+                    <label>Password</label>
                     <input
                         type="password"
                         placeholder="Password"
@@ -134,8 +160,8 @@ export default function LoginPage() {
                   Dev Login (dan4@gmail.com)
                 </button>
 
-                <div className={isSignup ? "login-link" : "signup-link"}>
-                    <p>
+                <div style={{ marginTop: 16, textAlign: "center" }}>
+                    <p style={{ fontSize: 14 }}>
                         {isSignup ? "Already have an account? " : "Don't have an account? "}
                         <a
                             href="#"

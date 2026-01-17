@@ -1,5 +1,4 @@
 "use client";
-import "./style.css"
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -102,8 +101,13 @@ export default function DashboardPage() {
     }
     return (
         <div className="page">
-            <div className="form-container">
-                <h2>DASHBOARD</h2>
+            <div className="header">
+                <h1>Interview Simulator</h1>
+                <button onClick={logout}>Logout</button>
+            </div>
+
+            <div className="form-container" style={{ marginTop: 24 }}>
+                <h2>Dashboard</h2>
 
                 {error && <p className="error">{error}</p>}
 
@@ -111,19 +115,12 @@ export default function DashboardPage() {
 
                 {user && (
                     <>
-                        <div className="dash">
+                        <div style={{ marginBottom: 24, padding: 16, background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>
                             <p className="muted">Welcome</p>
-                            <p className="big">{user.email}</p>
-
-                            <div className="dashRow">
-                                <span className="label">User Id</span>
-                                <span className="value">{user.id}</span>
-                            </div>
-
-                            <button className="logoutBtn" onClick={logout}>
-                                Logout
-                            </button>
+                            <p style={{ fontSize: 18, fontWeight: 500, marginTop: 4 }}>{user.email}</p>
+                            <p className="muted" style={{ marginTop: 8 }}>User ID: {user.id}</p>
                         </div>
+
                         <h2>Start Interview</h2>
                         <div>
                             <label>Topic:</label>
@@ -156,7 +153,7 @@ export default function DashboardPage() {
                             />
                         </div>
 
-                        <button className="startBtn" onClick={startInterview}>
+                        <button onClick={startInterview} style={{ width: "100%", marginTop: 8 }}>
                             Start Interview
                         </button>
                     </>
