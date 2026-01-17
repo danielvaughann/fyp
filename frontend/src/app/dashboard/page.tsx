@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 export default function DashboardPage() {
     // user can be an object or none
+    //test
     const [user, setUser] = useState<{ id: number; email: string } | null>(null);
     const [error, setError] = useState("");
 
