@@ -49,6 +49,8 @@ class GradingSystem:
         keyword_score, hits  = self._keyword_score(answer, keywords)
         llm_score = self._llm_score(question, reference, answer, keywords)
 
+        print(f"SBERT: {sbert_score:.1f}/100, Keywords: {keyword_score:.1f}/100, LLM: {llm_score:.1f}/100")
+
         baseline = sbert_score * 0.40 + keyword_score * 0.30
         final = baseline + llm_score * 0.30
         final_float_score = max(0.0, min(100.0, final)) / 100.0
@@ -63,8 +65,8 @@ class GradingSystem:
 
     def _keyword_score(self, answer: str, keywords: List[str]) -> Tuple[float, List[str]]:
         answer_clean = answer.lower()
-        for c in ".,!?":
-            answer_clean = answer_clean.replace(c, "")
+        for c in ".,!?/()[]<>":
+            answer_clean = answer_clean.replace(c, " ")
         words = set(answer_clean.split())
 
         hits: list[str] = []

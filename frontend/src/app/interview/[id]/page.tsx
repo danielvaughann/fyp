@@ -426,6 +426,10 @@ export default function InterviewPage() {
                     } else if (!shouldRun && vad.listening) {
                         vad.stop();
                     }
+                    
+                    return () => {
+                        vad.stop();
+                    };
 
                 }, [current?.question, isTtsPlaying, isTranscribing]
             );
@@ -466,6 +470,9 @@ export default function InterviewPage() {
                                 <p className="muted" style={{ fontSize: 13 }}>Recording: {isRecording ? "YES" : "no"}</p>
                                 <p className="muted" style={{ fontSize: 13 }}>Transcribing: {isTranscribing ? "YES" : "no"}</p>
                                 <p className="muted" style={{ fontSize: 13 }}>TTS Playing: {isTtsPlaying ? "YES" : "no"}</p>
+                                {isTranscribing && (
+                                    <p style={{ marginTop: 8, color: "var(--primary)", fontWeight: 500 }}>Processing your answer...</p>
+                                )}
                             </div>
 
                             <div style={{ marginTop: 16 }}>

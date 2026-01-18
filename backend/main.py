@@ -4,7 +4,7 @@ from question_selector import selected_mixed_random_questions
 from models import Question
 from datetime import timedelta
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -55,6 +55,9 @@ class SignupRequirements(BaseModel):
 
 @app.post("/auth/signup")
 def signup(payload: SignupRequirements, db: Session = Depends(get_db)):
+
+    if len(payload.password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
 
     if db.query(User).filter(User.email == payload.email).first(): #check if user already exists
         raise HTTPException(status_code=400, detail="Email already exists")
@@ -111,6 +114,9 @@ def start_interview(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if payload.question_count < 1 or payload.question_count > 10:
+        raise HTTPException(status_code=400, detail="Question count must be between 1 and 10")
+    
     if payload.topic == "Mixed":
         selected_questions = selected_mixed_random_questions(db, payload.difficulty, payload.question_count)
         question_ids = [question.id for question in selected_questions]
@@ -150,10 +156,80 @@ def start_interview(
 class submitAnswerRequirements(BaseModel):
     transcript: str
 
+def process_answer_async(session_id: str, answer_id: int, question_id: int, transcript: str):
+    from db import SessionLocal
+    db = SessionLocal()
+    try:
+        question = db.query(Question).filter(Question.id == question_id).first()
+        if not question:
+            print(f"Question {question_id} not found for answer {answer_id}")
+            return
+        
+        keywords = question.keywords or []
+        sim, keywords_hit = grader.grade(
+            answer=transcript,
+            reference=question.reference_answer,
+            question=question.text,
+            keywords=keywords,
+        )
+        score = int(round(sim * 100))
+        
+        feedback = generate_feedback(
+            question_text=question.text,
+            reference_answer=question.reference_answer,
+            transcript=transcript,
+            score=score
+        )
+        
+        answer = db.query(Answer).filter(Answer.id == answer_id).first()
+        if answer:
+            answer.score = score
+            answer.feedback = feedback
+            answer.keywords_hit = keywords_hit
+            db.commit()
+            print(f"Processed answer {answer_id}")
+    except Exception as e:
+        print(f"Failed to process answer")
+        db.rollback()
+    finally:
+        db.close()
+
+def process_overall_feedback_async(session_id: str):
+    from db import SessionLocal
+    db = SessionLocal()
+    try:
+        interview_session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+        if not interview_session:
+            print(f"Session {session_id} not found for overall feedback")
+            return
+        answers = db.query(Answer).filter(Answer.session_id == session_id).all()
+        summary = []
+        for answer in answers:
+            question = db.query(Question).filter(Question.id == answer.question_id).first()
+            summary.append({
+                "question_id": question.id,
+                "topic": question.topic,
+                "question_text": question.text,
+                "reference_answer": question.reference_answer,
+                "transcript": answer.transcript,
+                "score": answer.score,
+                "feedback": answer.feedback,
+                "keywords_hit": answer.keywords_hit,
+            })
+        interview_session.overall_feedback = generate_overall_feedback(summary)
+        db.commit()
+        print(f"Generated overall feedback for session {session_id}")
+    except Exception as e:
+        print(f"Failed to generate overall feedback for the session")
+        db.rollback()
+    finally:
+        db.close()
+
 @app.post("/interview/{session_id}/answer")
 def submit_answer(
-    session_id: str, # path from url
+    session_id: str,
     payload: submitAnswerRequirements,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -177,76 +253,27 @@ def submit_answer(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
-   # sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
-
-    keywords = question.keywords or []
-
-    sim, keywords_hit = grader.grade(
-        answer=payload.transcript,
-        reference=question.reference_answer,
-        question=question.text,
-        keywords=keywords,
-    )
-    score = int(round(sim * 100))
-
-    print("LLM starting single question feedback generation")
-
-    feedback = generate_feedback(question_text=question.text, reference_answer=question.reference_answer, transcript=payload.transcript,score=score,)
-    print("LLM stopping single question feedback generation")
+    if not payload.transcript.strip():
+        raise HTTPException(status_code=400, detail="Transcript cannot be empty")
 
     answer = Answer(
         session_id=interview_session.id,
         question_id=question_id,
         transcript=payload.transcript,
-        score=score,
-        feedback=feedback,
-        keywords_hit=keywords_hit,
+        score=0,
+        feedback="",
+        keywords_hit=[],
     )
     db.add(answer)
+    db.flush()
+
+    background_tasks.add_task(process_answer_async, session_id, answer.id, question_id, payload.transcript)
 
     interview_session.current_index += 1
     if interview_session.current_index >= interview_session.question_count:
         interview_session.status = "completed"
         interview_session.end_time = datetime.now(timezone.utc)
-
-        #build overall summary and add to database here so its ready for results page
-        answers = (
-            db.query(Answer)
-            .filter(Answer.session_id == interview_session.id)
-            .all()
-        )
-
-        summary = []
-        for answer in answers:
-            question = db.query(Question).filter(Question.id == answer.question_id).first()
-            summary.append(
-                {
-                    "question_id": question.id,
-                    "topic": question.topic,
-                    "question_text": question.text,
-                    "reference_answer": question.reference_answer,
-                    "transcript": answer.transcript,
-                    "score": answer.score,
-                    "feedback": answer.feedback,
-                    "keywords_hit": answer.keywords_hit,
-                }
-            )
-        summary_object = {
-            "session": {
-                "id": str(interview_session.id),
-                "topic": interview_session.topic,
-                "difficulty": interview_session.difficulty,
-                "status": interview_session.status,
-            },
-            "answers": summary,
-        }
-        print("LLM starting OVERALL question feedback generation")
-       # interview_session.overall_feedback = generate_overall_feedback(summary_object)
-        interview_session.overall_feedback = generate_overall_feedback(summary_object["answers"])
-
-        #interview_session.overall_feedback = "TODO: change this to overall feedback variable"
-
-        print("LLM stopping OVERALL question feedback generation")
+        background_tasks.add_task(process_overall_feedback_async, session_id)
 
     db.commit()
     return{"ok":True, "completed": interview_session.status == "completed"}

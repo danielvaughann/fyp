@@ -28,6 +28,9 @@ export default function ResultsPage() {
 
     const [summary, setSummary] = useState<SummaryResponse | null>(null);
     const [error, setError] = useState("");
+    const [isLoading, setIsLoading] = useState(true);
+    const [retryCount, setRetryCount] = useState(0);
+    const MAX_RETRIES = 60;
 
     function logout() {
         localStorage.removeItem("token");
@@ -39,6 +42,8 @@ export default function ResultsPage() {
             router.push("/login");
             return;
         }
+
+        let retries = 0;
 
         async function loadSummary() {
             try {
@@ -58,16 +63,33 @@ export default function ResultsPage() {
                     }
 
                     setError(message);
+                    setIsLoading(false);
                     return;
                 }
                 setSummary(json);
+                setIsLoading(false);
             } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : String(e);
                 setError(msg || "Failed to load interview summary");
+                setIsLoading(false);
             }
         }
 
         loadSummary();
+        
+        const interval = setInterval(() => {
+            retries++;
+            setRetryCount(retries);
+            if (retries >= MAX_RETRIES) {
+                clearInterval(interval);
+                setError("Feedback generation timed out.");
+                setIsLoading(false);
+                return;
+            }
+            loadSummary();
+        }, 3000);
+        
+        return () => clearInterval(interval);
     }, [router, sessionId]);
 
     const averageScore = summary?.answers.length
@@ -87,7 +109,9 @@ export default function ResultsPage() {
       <div className="form-container" style={{ marginTop: 24, maxWidth: 800 }}>
         <h2>Results</h2>
         {error && <p className="error">{error}</p>}
-        {!error && !summary && <p>Loading...</p>}
+        {!error && isLoading && (
+          <p>Generating feedback, please wait... ({retryCount * 3}s)</p>
+        )}
 
         {summary && (
           <div>
