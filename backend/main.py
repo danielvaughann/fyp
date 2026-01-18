@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from fastapi.staticfiles import StaticFiles # allow browser to request mp3 files
 from tts import generate_tts_audio, generate_OPENAI_tts_audio
 from stt import router as stt_router
-from grading import roberta_cosine_grading
+from grading import grader
 from groq import generate_feedback, generate_overall_feedback
 
 app = FastAPI()
@@ -177,9 +177,16 @@ def submit_answer(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
-    #TODO uncomment abouve
+   # sim = roberta_cosine_grading(payload.transcript, question.reference_answer)
 
+    keywords = question.keywords or []
+
+    sim, keywords_hit = grader.grade(
+        answer=payload.transcript,
+        reference=question.reference_answer,
+        question=question.text,
+        keywords=keywords,
+    )
     score = int(round(sim * 100))
 
     print("LLM starting single question feedback generation")
@@ -193,6 +200,7 @@ def submit_answer(
         transcript=payload.transcript,
         score=score,
         feedback=feedback,
+        keywords_hit=keywords_hit,
     )
     db.add(answer)
 
@@ -220,6 +228,7 @@ def submit_answer(
                     "transcript": answer.transcript,
                     "score": answer.score,
                     "feedback": answer.feedback,
+                    "keywords_hit": answer.keywords_hit,
                 }
             )
         summary_object = {
@@ -278,6 +287,7 @@ def get_interview_summary(
                 "transcript": answer.transcript,
                 "score": answer.score,
                 "feedback": answer.feedback,
+                "keywords_hit": answer.keywords_hit,
             }
         )
 

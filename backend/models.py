@@ -23,6 +23,7 @@ class Question(Base):
     difficulty = Column(String(20), nullable=False)
     text = Column(Text, nullable=False)
     reference_answer = Column(Text, nullable=False)
+    keywords = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -50,4 +51,6 @@ class Answer(Base):
     transcript = Column(Text, nullable=False)
     score = Column(Integer, nullable=False)
     feedback = Column(Text, nullable=False)
+    keywords_hit= Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+

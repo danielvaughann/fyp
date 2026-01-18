@@ -26,12 +26,11 @@ if __name__ == "__main__":
     test_scoring()
 """
 import os
-from typing import List
+from typing import List, Tuple
 import requests
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer, util
 
-from backend.grading_test import roberta_cosine_grading
 
 load_dotenv()
 
@@ -45,13 +44,15 @@ class GradingSystem:
         self.model = os.getenv("XAI_MODEL", "grok-3-mini")
         self.sbert = SentenceTransformer("all-MiniLM-L6-v2")
 
-    def grade(self, answer: str, reference: str, question: str, keywords: List[str]) -> float:
+    def grade(self, answer: str, reference: str, question: str, keywords: List[str])  -> Tuple[float, List[str]]:
         sbert_score = self._sbert_score(answer, reference)
-        keyword_score = self._keyword_score(answer, keywords)
+        keyword_score, hits  = self._keyword_score(answer, keywords)
         llm_score = self._llm_score(question, reference, answer, keywords)
+
         baseline = sbert_score * 0.40 + keyword_score * 0.30
         final = baseline + llm_score * 0.30
-        return max(0.0, min(100.0, final)) / 100.0
+        final_float_score = max(0.0, min(100.0, final)) / 100.0
+        return final_float_score, hits
 
     def _sbert_score(self, answer: str, reference: str) -> float:
         if not answer or not reference:
@@ -60,24 +61,27 @@ class GradingSystem:
         sim = util.pytorch_cos_sim(emb[0], emb[1]).item()
         return sim * 100.0
 
-    def _keyword_score(self, answer: str, keywords: List[str]) -> float:
+    def _keyword_score(self, answer: str, keywords: List[str]) -> Tuple[float, List[str]]:
         answer_clean = answer.lower()
         for c in ".,!?":
             answer_clean = answer_clean.replace(c, "")
         words = set(answer_clean.split())
+
+        hits: list[str] = []
         matched = 0
         for kw in keywords:
             k = kw.lower()
             if k in answer_clean:
                 matched += 1
+                hits.append(kw)
                 continue
             kw_words = set(k.replace("-", " ").split())
             if kw_words & words:
                 matched += 1
         threshold = 3
         if matched >= threshold:
-            return 100.0
-        return (matched / threshold) * 100.0
+            return 100.0, hits
+        return (matched / threshold) * 100.0, hits
 
     def _llm_score(self, question: str, reference: str, answer: str, keywords: List[str]) -> float:
         prompt = f"""Give a harsh verdict.
@@ -123,6 +127,8 @@ class GradingSystem:
             return 0.0
         except Exception:
             return 0.0
+
+grader = GradingSystem()
 if __name__ == "__main__":
     grader = GradingSystem()
     answer = "A stack is a LIFO structure where you push and pop items from the top. Used in recursion and undo/redo."

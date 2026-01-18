@@ -17,6 +17,7 @@ type SummaryResponse = {
         transcript: string;
         score: number;
         feedback: string;
+        keywords_hit: string[];
     }>;
 };
 
@@ -112,6 +113,9 @@ export default function ResultsPage() {
               <div key={idx} style={{ marginBottom: 20 }}>
                 <p><b>Q:</b> {answer_map.question_text}</p>
                 <p><b>Your answer:</b> {answer_map.transcript}</p>
+                  {answer_map.keywords_hit?.length > 0 && (
+                 <p><b>Keywords hit:</b> {answer_map.keywords_hit.join(", ")}</p>
+                    )}
                   <br></br>
                <p style={{ whiteSpace: "pre-line" }}>
                    {answer_map.feedback}
