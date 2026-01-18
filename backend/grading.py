@@ -86,20 +86,39 @@ class GradingSystem:
         return (matched / threshold) * 100.0, hits
 
     def _llm_score(self, question: str, reference: str, answer: str, keywords: List[str]) -> float:
-        prompt = f"""Give a harsh verdict.
+        prompt = f"""You are a Computer Science interview grader.
+
+        Grade ONLY the technical correctness of the student's ANSWER.
+        Do NOT reward effort, confidence, politeness, or filler.
 
         QUESTION: {question}
-        KEYWORDS: {', '.join(keywords)}
-        REFERENCE: {reference}
-        ANSWER: {answer}
+        REFERENCE (ideal answer): {reference}
+        KEYWORDS (hints only): {', '.join(keywords)}
+        ANSWER (student): {answer}
 
-        RULES:
-        - CORRECT: Clear understanding of core concept
-        - MOSTLY_CORRECT: Some key ideas right but missing details
-        - INCORRECT: Fundamentally wrong
+        Return a SCORE from this exact set: 0, 25, 50, 75, 100.
 
-        Format:
-        VERDICT: [CORRECT | MOSTLY_CORRECT | INCORRECT]"""
+        CORE IDEA:
+        - If the answer is broadly correct and addresses the question, it should usually be 75.
+        - Use 100 only for strong, complete answers.
+        - Use 50 for partially correct / incomplete answers.
+        - Use 25 or 0 only when clearly wrong or off-topic.
+
+        SCORING RUBRIC:
+        - 100 (Excellent): Correct AND includes at least TWO solid correct details (definition + how it works OR trade-off/use-case). Clear and accurate. No major errors.
+        - 75 (Good): Generally correct and answers the question in a reasonable way, even if brief or missing depth. Minor omissions allowed.
+        - 50 (Partial): Some correct idea(s) but incomplete/vague OR mixes correct with confusion. Does not fully answer the question.
+        - 25 (Poor): Mentions the right topic/keywords but explanation is mostly wrong/confused OR barely relates to the question.
+        - 0 (Incorrect): Unrelated, nonsense, pure filler, or fundamentally wrong.
+
+        ANTI-FALSE-POSITIVE RULES:
+        - Do NOT give 75+ for answers that are basically empty.
+        - If the answer is off-topic (e.g. random story) => 0.
+        - If it proposes nonsense (e.g., "put a barrier so tables don't collide") => 0.
+
+        Output EXACTLY one line and nothing else:
+        SCORE: [0|25|50|75|100]"""
+
         try:
             r = requests.post(
                 self.base_url,
@@ -110,25 +129,38 @@ class GradingSystem:
                 json={
                     "model": self.model,
                     "messages": [
-                        {"role": "system",
-                         "content": "You are a harsh Computer Science interview grader. Respond in exact format."},
+                        {
+                            "role": "system",
+                            "content": "You are a strict Computer Science interview grader. Output exactly one line in the required format.",
+                        },
                         {"role": "user", "content": prompt},
                     ],
-                    "temperature": 0.2,
-                    "max_tokens": 50,
+                    "temperature": 0.0,
+                    "max_tokens": 20,
                 },
                 timeout=30,
             )
             if not r.ok:
                 return 0.0
-            content = r.json()["choices"][0]["message"]["content"]
-            if "CORRECT" in content and "MOSTLY" not in content:
-                return 100.0
-            if "MOSTLY" in content:
-                return 50.0
-            return 0.0
+
+            content = r.json()["choices"][0]["message"]["content"].strip()
+
+            # Robust parse (handles extra whitespace)
+            # Expected: "SCORE: 75"
+            if "SCORE" not in content:
+                return 0.0
+            digits = "".join(ch for ch in content if ch.isdigit())
+            if digits == "":
+                return 0.0
+
+            score = int(digits)
+            if score not in (0, 25, 50, 75, 100):
+                return 0.0
+            return float(score)
+
         except Exception:
             return 0.0
+
 
 grader = GradingSystem()
 if __name__ == "__main__":
