@@ -160,6 +160,7 @@ def process_answer_async(session_id: str, answer_id: int, question_id: int, tran
     from db import SessionLocal
     db = SessionLocal()
     try:
+        print(f"[GRADING] Starting grading for answer {answer_id}")
         question = db.query(Question).filter(Question.id == question_id).first()
         if not question:
             print(f"Question {question_id} not found for answer {answer_id}")
@@ -174,6 +175,7 @@ def process_answer_async(session_id: str, answer_id: int, question_id: int, tran
         )
         score = int(round(sim * 100))
         
+        print(f"[GRADING] Generating feedback for answer {answer_id}")
         feedback = generate_feedback(
             question_text=question.text,
             reference_answer=question.reference_answer,
@@ -187,9 +189,9 @@ def process_answer_async(session_id: str, answer_id: int, question_id: int, tran
             answer.feedback = feedback
             answer.keywords_hit = keywords_hit
             db.commit()
-            print(f"Processed answer {answer_id}")
+            print(f"[GRADING] Completed answer {answer_id} with score {score}%")
     except Exception as e:
-        print(f"Failed to process answer")
+        print(f"[GRADING] Failed to process answer: {e}")
         db.rollback()
     finally:
         db.close()
@@ -198,6 +200,7 @@ def process_overall_feedback_async(session_id: str):
     from db import SessionLocal
     db = SessionLocal()
     try:
+        print(f"[OVERALL] Starting overall feedback for session {session_id}")
         interview_session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
         if not interview_session:
             print(f"Session {session_id} not found for overall feedback")
@@ -218,9 +221,9 @@ def process_overall_feedback_async(session_id: str):
             })
         interview_session.overall_feedback = generate_overall_feedback(summary)
         db.commit()
-        print(f"Generated overall feedback for session {session_id}")
+        print(f"[OVERALL] Completed overall feedback for session {session_id}")
     except Exception as e:
-        print(f"Failed to generate overall feedback for the session")
+        print(f"[OVERALL] Failed to generate overall feedback: {e}")
         db.rollback()
     finally:
         db.close()

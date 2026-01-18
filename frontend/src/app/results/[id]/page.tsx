@@ -66,9 +66,9 @@ export default function ResultsPage() {
                     setIsLoading(false);
                     return;
                 }
-                setSummary(json);
-                // loads until overall feedback is ready
+                // Only set summary when overall_feedback is ready
                 if (json.session?.overall_feedback) {
+                    setSummary(json);
                     setIsLoading(false);
                     clearInterval(interval);
                 }
@@ -115,11 +115,11 @@ export default function ResultsPage() {
       <div className="form-container" style={{ marginTop: 24, maxWidth: 800 }}>
         <h2>Results</h2>
         {error && <p className="error">{error}</p>}
-        {!error && isLoading && (
-          <p>Generating feedback, please wait... ({retryCount * 3}s)</p>
+        {isLoading && !error && (
+          <p>Loading...</p>
         )}
 
-        {summary && (
+        {!isLoading && summary && (
           <div>
             <div style={{ marginBottom: 16 }}>
               <p><b>Topic:</b> {summary.session.topic}</p>
