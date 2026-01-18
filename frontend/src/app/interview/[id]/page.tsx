@@ -193,6 +193,8 @@ export default function InterviewPage() {
             router.push(`/results/${sessionId}`);
             return;
         }
+        // Set TTS playing BEFORE setting current to prevent VAD from starting
+        setIsTtsPlaying(true);
         // set current question data triggers tts
         setCurrent(data);
     }
@@ -212,10 +214,7 @@ export default function InterviewPage() {
         const audioUrl = current?.question?.audio_url;
         if (!audioUrl) return;
         
-        // stop vad while loading new question
-        if (vad.listening) vad.stop();
-        
-        setAutoPlayBlocked(false);
+        console.log("[TTS] New audio URL");
 
         // stop any current audio playing
         if (audioRef.current) {
@@ -226,23 +225,23 @@ export default function InterviewPage() {
         //create new audio element and play
         const audio = new Audio(`http://localhost:8000${audioUrl}`);
         audioRef.current = audio;
-
-        setIsTtsPlaying(true);
         
         audio.onended = () => {
-            // 1 second delay after tts plays
-            setTimeout(() => {
-                setIsTtsPlaying(false);
-            }, 1500);
+            console.log("[TTS] Audio ended");
+            setIsTtsPlaying(false);
         }
 
-        audio.play().catch(() => {
-            setAutoPlayBlocked(true);
-            setIsTtsPlaying(false);
-        });
+        audio.play()
+            .then(() => console.log("[TTS] Playing"))
+            .catch(() => {
+                console.log("[TTS] Autoplay blocked");
+                setAutoPlayBlocked(true);
+                setIsTtsPlaying(false);
+            });
 
         //cleanup by pausing audio when component unmounts
         return () => {
+            console.log("[TTS] Cleanup");
             audio.onended = null;
             audio.pause();
             setIsTtsPlaying(false);
@@ -404,6 +403,7 @@ export default function InterviewPage() {
 
             const vad = useVad({
              onSpeechStart: () => {
+              console.log("[VAD] Speech detected");
               // reset stop timer if speech starts again
               if (stopTimerRef.current) {
                 clearTimeout(stopTimerRef.current);
@@ -412,8 +412,10 @@ export default function InterviewPage() {
 
               //start recording
               if (current?.question && !isTranscribing && !isTtsPlaying && !isRecording) {
-                console.log("VAD started");
+                console.log("[VAD] Starting recording");
                 startRecording();
+              } else {
+                console.log("[VAD] Cannot record:", { hasQ: !!current?.question, isTranscribing, isTtsPlaying, isRecording });
               }
             },
 
@@ -432,15 +434,19 @@ export default function InterviewPage() {
             });
 
             useEffect(() => {
-                    const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying
-                    //console.log("VAD should run:")
+                    const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying;
+                    console.log("[VAD] Effect:", { hasQuestion: !!current?.question, isTranscribing, isTtsPlaying, shouldRun, listening: vad.listening });
+                    
                     if (shouldRun && !vad.listening) {
+                        console.log("[VAD] Starting");
                         vad.start();
                     } else if (!shouldRun && vad.listening) {
+                        console.log("[VAD] Stopping");
                         vad.stop();
                     }
                     
                     return () => {
+                        console.log("[VAD] Cleanup");
                         vad.stop();
                     };
 
