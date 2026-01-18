@@ -67,7 +67,11 @@ export default function ResultsPage() {
                     return;
                 }
                 setSummary(json);
-                setIsLoading(false);
+                // loads until overall feedback is ready
+                if (json.session?.overall_feedback) {
+                    setIsLoading(false);
+                    clearInterval(interval);
+                }
             } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : String(e);
                 setError(msg || "Failed to load interview summary");
@@ -75,9 +79,11 @@ export default function ResultsPage() {
             }
         }
 
+        let interval: NodeJS.Timeout;
+        
         loadSummary();
         
-        const interval = setInterval(() => {
+        interval = setInterval(() => {
             retries++;
             setRetryCount(retries);
             if (retries >= MAX_RETRIES) {
