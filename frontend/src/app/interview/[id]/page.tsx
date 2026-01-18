@@ -82,7 +82,7 @@ type IntervalHandle = ReturnType<typeof setInterval>;
                 const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
 
                 // noise threshold
-                const isSpeaking = volume > 35;
+                const isSpeaking = volume > 30;
 
                 // silence to speaking transition
                 if (isSpeaking && !vadRef.current.speaking) {
@@ -211,9 +211,11 @@ export default function InterviewPage() {
     useEffect(() => {
         const audioUrl = current?.question?.audio_url;
         if (!audioUrl) return;
-        if (vad.listening) vad.stop()
-        //allow autoplay
-        setAutoPlayBlocked(false)
+        
+        // stop vad while loading new question
+        if (vad.listening) vad.stop();
+        
+        setAutoPlayBlocked(false);
 
         // stop any current audio playing
         if (audioRef.current) {
@@ -225,26 +227,27 @@ export default function InterviewPage() {
         const audio = new Audio(`http://localhost:8000${audioUrl}`);
         audioRef.current = audio;
 
-        // record if tts is playing so vad doesnt start while interviewer is speaking
-        setIsTtsPlaying(false)
-        audio.onended = () => setIsTtsPlaying(false)
+        setIsTtsPlaying(true);
+        
+        audio.onended = () => {
+            // 1 second delay after tts plays
+            setTimeout(() => {
+                setIsTtsPlaying(false);
+            }, 1500);
+        }
 
-        audio.play().then(() => {
-            //audio playing
-            setIsTtsPlaying(true)
-        }).catch(() => {
-            //if autoplay blocked is blocked manual play button appears
+        audio.play().catch(() => {
             setAutoPlayBlocked(true);
-            setIsTtsPlaying(false)
+            setIsTtsPlaying(false);
         });
 
         //cleanup by pausing audio when component unmounts
         return () => {
-            audio.onended=null
+            audio.onended = null;
             audio.pause();
-            setIsTtsPlaying(false)
+            setIsTtsPlaying(false);
         };
-    }, [current?.question?.audio_url]); // runs when url changes
+    }, [current?.question?.audio_url]);
 
     //stop mircophonne
     const stopMic = () => {
@@ -392,7 +395,10 @@ export default function InterviewPage() {
             router.push(`/results/${sessionId}`);
             return;
         }
-        loadCurrentQuestion();
+        // Small delay before loading next question
+        setTimeout(() => {
+            loadCurrentQuestion();
+        }, 300);
     }
 
 
@@ -412,7 +418,7 @@ export default function InterviewPage() {
             },
 
                 onSpeechEnd: () => {
-                    console.log("Starting x second countdown of speech ending")
+                    console.log("Starting 1 second countdown of speech ending")
                     if (stopTimerRef.current) return
 
                     //wait to stop timer not to cut user off
@@ -421,7 +427,7 @@ export default function InterviewPage() {
                         stopRecording()
                         stopTimerRef.current = null;
 
-                    }, 700);
+                    }, 1500);
                 }
             });
 
