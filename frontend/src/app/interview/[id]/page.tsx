@@ -19,6 +19,119 @@ type CurrentResponse = {
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 type IntervalHandle = ReturnType<typeof setInterval>;
+
+
+    // detect voice
+    function useVad({onSpeechStart, onSpeechEnd}: {
+
+        //callback functions
+        onSpeechStart: () => void;
+        onSpeechEnd: () => void
+    }) {
+
+        // is the vad listening?
+        const [listening, setListening] = useState(false);
+
+        //microphone and web audio references
+        const streamRefVad = useRef<MediaStream | null>(null); // microphone stream
+        const analyserRef = useRef<AnalyserNode | null>(null); // analyses audio data
+        const audioCtxRef = useRef<AudioContext | null>(null);
+        const intervalRef = useRef<IntervalHandle | null>(null); // controls 100ms interval
+
+        // voice active state
+        const vadRef = useRef({speaking: false, silenceCount: 0});
+
+        // vad begins to listen
+        const start = async () => {
+            if (listening) return;
+
+            // gets microphone access
+            const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+            streamRefVad.current = stream;
+
+           //webAudio api
+            const audioContext = new AudioContext();
+            audioCtxRef.current = audioContext;
+
+            // analyser node to process audio
+            const analyser = audioContext.createAnalyser();
+            analyserRef.current = analyser;
+
+            // connect microphone to analyser
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyser);
+
+            // control numberr of frequency bins
+            analyser.fftSize = 256;
+
+            // vad is running
+            setListening(true);
+
+
+            // check volume at 100ms intervals
+            const checkVolume = () => {
+                if (!analyserRef.current) return;
+
+                //buffer to recieve frequency data
+                const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+
+                //fills each frequency bin with data
+                analyserRef.current.getByteFrequencyData(dataArray);
+
+                // calculate average volume of all bins
+                const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+
+                // noise threshold
+                const isSpeaking = volume > 35;
+
+                // silence to speaking transition
+                if (isSpeaking && !vadRef.current.speaking) {
+                    // speaking mode
+                    vadRef.current.speaking = true;
+                    vadRef.current.silenceCount = 0
+                    onSpeechStart()
+
+                    // silence interval
+                } else if (!isSpeaking && vadRef.current.speaking) {
+                    vadRef.current.silenceCount++
+                    if (vadRef.current.silenceCount > 10) { // 3 intervals of silence
+                        vadRef.current.speaking = false;
+                        onSpeechEnd()
+                    }
+                }
+                // reset silence counter if speaking continues
+                if(isSpeaking && vadRef.current.speaking){
+                    vadRef.current.silenceCount = 0
+                }
+            }
+            intervalRef.current = setInterval(checkVolume, 100);
+
+        }
+
+
+        const stop = () => {
+            //stop interval if running
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+
+            //stop microphone and audio references
+            streamRefVad.current?.getTracks().forEach(track => track.stop());
+            streamRefVad.current = null
+            analyserRef.current = null
+            audioCtxRef.current?.close().catch(() => {});
+            audioCtxRef.current = null
+
+            // reset vad state
+            vadRef.current = {speaking: false, silenceCount: 0}
+
+            setListening(false);
+
+        }
+        return {listening, start, stop}
+    }
+
 // main component exported from this file
 export default function InterviewPage() {
     const router = useRouter();
@@ -98,7 +211,7 @@ export default function InterviewPage() {
     useEffect(() => {
         const audioUrl = current?.question?.audio_url;
         if (!audioUrl) return;
-
+        if (vad.listening) vad.stop()
         //allow autoplay
         setAutoPlayBlocked(false)
 
@@ -113,10 +226,13 @@ export default function InterviewPage() {
         audioRef.current = audio;
 
         // record if tts is playing so vad doesnt start while interviewer is speaking
-        setIsTtsPlaying(true)
+        setIsTtsPlaying(false)
         audio.onended = () => setIsTtsPlaying(false)
 
-        audio.play().catch(() => {
+        audio.play().then(() => {
+            //audio playing
+            setIsTtsPlaying(true)
+        }).catch(() => {
             //if autoplay blocked is blocked manual play button appears
             setAutoPlayBlocked(true);
             setIsTtsPlaying(false)
@@ -124,6 +240,7 @@ export default function InterviewPage() {
 
         //cleanup by pausing audio when component unmounts
         return () => {
+            audio.onended=null
             audio.pause();
             setIsTtsPlaying(false)
         };
@@ -278,116 +395,6 @@ export default function InterviewPage() {
         loadCurrentQuestion();
     }
 
-    // detect voice
-    function useVad({onSpeechStart, onSpeechEnd}: {
-
-        //callback functions
-        onSpeechStart: () => void;
-        onSpeechEnd: () => void
-    }) {
-
-        // is the vad listening?
-        const [listening, setListening] = useState(false);
-
-        //microphone and web audio references
-        const streamRefVad = useRef<MediaStream | null>(null); // microphone stream
-        const analyserRef = useRef<AnalyserNode | null>(null); // analyses audio data
-        const audioCtxRef = useRef<AudioContext | null>(null);
-        const intervalRef = useRef<IntervalHandle | null>(null); // controls 100ms interval
-
-        // voice active state
-        const vadRef = useRef({speaking: false, silenceCount: 0});
-
-        // vad begins to listen
-        const start = async () => {
-            if (listening) return;
-
-            // gets microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({audio: true});
-            streamRefVad.current = stream;
-
-           //webAudio api
-            const audioContext = new AudioContext();
-            audioCtxRef.current = audioContext;
-
-            // analyser node to process audio
-            const analyser = audioContext.createAnalyser();
-            analyserRef.current = analyser;
-
-            // connect microphone to analyser
-            const source = audioContext.createMediaStreamSource(stream);
-            source.connect(analyser);
-
-            // control numberr of frequency bins
-            analyser.fftSize = 256;
-
-            // vad is running
-            setListening(true);
-
-
-            // check volume at 100ms intervals
-            const checkVolume = () => {
-                if (!analyserRef.current) return;
-
-                //buffer to recieve frequency data
-                const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-
-                //fills each frequency bin with data
-                analyserRef.current.getByteFrequencyData(dataArray);
-
-                // calculate average volume of all bins
-                const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-
-                // noise threshold
-                const isSpeaking = volume > 20;
-
-                // silence to speaking transition
-                if (isSpeaking && !vadRef.current.speaking) {
-                    // speaking mode
-                    vadRef.current.speaking = true;
-                    vadRef.current.silenceCount = 0
-                    onSpeechStart()
-
-                    // silence interval
-                } else if (!isSpeaking && vadRef.current.speaking) {
-                    vadRef.current.silenceCount++
-                    if (vadRef.current.silenceCount > 10) { // 3 intervals of silence
-                        vadRef.current.speaking = false;
-                        onSpeechEnd()
-                    }
-                }
-                // reset silence counter if speaking continues
-                if(isSpeaking && vadRef.current.speaking){
-                    vadRef.current.silenceCount = 0
-                }
-            }
-            intervalRef.current = setInterval(checkVolume, 100);
-
-        }
-
-
-        const stop = () => {
-            //stop interval if running
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-                intervalRef.current = null;
-            }
-
-            //stop microphone and audio references
-            streamRefVad.current?.getTracks().forEach(track => track.stop());
-            streamRefVad.current = null
-            analyserRef.current = null
-            audioCtxRef.current?.close().catch(() => {});
-            audioCtxRef.current = null
-
-            // reset vad state
-            vadRef.current = {speaking: false, silenceCount: 0}
-
-            setListening(false);
-
-        }
-        return {listening, start, stop}
-    }
 
             const vad = useVad({
              onSpeechStart: () => {
