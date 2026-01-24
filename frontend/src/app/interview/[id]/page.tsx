@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import InterviewCamera from "@/components/InterviewCamera";
 
 // define structure of api response
 type CurrentResponse = {
@@ -160,6 +161,13 @@ export default function InterviewPage() {
     const [autoSubmit, setAutoSubmit] = useState(true); // auto submit after voice transcription
     // timer to delay stopping mic after speech ends
     const stopTimerRef = useRef<TimeoutHandle | null>(null);
+
+    const [handOverFaceCount, setHandOverFaceCount] = useState(0);
+
+
+    //closing text
+    const [closingText, setClosingText] = useState<string | null>(null);
+
 
 
 
@@ -514,6 +522,16 @@ export default function InterviewPage() {
                             >
                                 Stop Recording
                             </button>
+                            <InterviewCamera
+                                 onHandOverFaceChange={(over) => {
+                                     if (over) console.log("[CAM] hand over face detected");
+                                      }}
+                                   onHandOverFaceCountChange={(count) => {
+                                     setHandOverFaceCount(count);
+    }}
+/>
+
+
                         </div>
                     </>
                 )}
