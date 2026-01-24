@@ -12,6 +12,7 @@ def generate_script(question_topics: list[str], question_count: int, candidate_n
             "closing": "string",
         },
     }
+    #d
 
     # 1) draft
     draft_res = executor.initiate_chat(
