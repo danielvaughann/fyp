@@ -27,6 +27,8 @@ from tts import generate_tts_audio, generate_OPENAI_tts_audio
 from stt import router as stt_router
 from grading import grader
 from groq import generate_feedback, generate_overall_feedback
+from agents.interview_script_orchestrator import generate_script
+import random
 
 app = FastAPI()
 app.include_router(stt_router)
@@ -40,6 +42,65 @@ app.add_middleware( # cross origin resource sharing
 # make files in static folder available at /static url
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
+INTRO_FALLBACKS = [
+    "Hi — we’ll do a short technical interview. Take a moment before you answer.",
+    "Welcome. I’ll ask a few technical questions. Answer as clearly as you can.",
+    "Alright — let’s get started. I’ll ask a few technical questions.",
+]
+
+CLOSING_FALLBACKS = [
+    "That’s the end of the interview. I’m generating your feedback now.",
+    "Thanks — that’s everything. I’ll now produce your feedback.",
+    "Great, we’re done. Your results will appear shortly.",
+]
+
+TRANSITIONS_SAME_TOPIC = [
+    "Alright — next question.",
+    "Okay, moving on.",
+    "Thanks. Let’s continue.",
+    "Got it. Next one.",
+]
+
+TRANSITIONS_NEW_TOPIC = [
+    "Alright, let’s switch topic to {topic}.",
+    "Okay — next we’ll talk about {topic}.",
+    "Moving on to {topic}.",
+    "Let’s change gears to {topic}.",
+]
+
+TRANSITIONS_LAST = [
+    "Final question coming up.",
+    "Alright — last question.",
+    "Okay, final one.",
+]
+
+def build_transitions(topics_in_order: list[str]) -> list[str]:
+    """
+    Returns a list length (n-1): transition before Q2..Qn
+    Uses topic-aware templates, deterministic-fast (no LLM).
+    """
+    n = len(topics_in_order)
+    if n <= 1:
+        return []
+
+    transitions: list[str] = []
+    for i in range(1, n):  # before question i+1
+        is_last_question = (i == n - 1)
+        prev_topic = topics_in_order[i - 1]
+        next_topic = topics_in_order[i]
+
+        if is_last_question:
+            transitions.append(random.choice(TRANSITIONS_LAST))
+            continue
+
+        if next_topic != prev_topic:
+            t = random.choice(TRANSITIONS_NEW_TOPIC).format(topic=next_topic)
+            transitions.append(t)
+        else:
+            transitions.append(random.choice(TRANSITIONS_SAME_TOPIC))
+
+    return transitions
 @app.get("/health") # uvicorn main:app --reload --port 8000
 def health(): # check if api is running
     return {"status": "API running"}
@@ -116,10 +177,25 @@ def start_interview(
 ):
     if payload.question_count < 1 or payload.question_count > 10:
         raise HTTPException(status_code=400, detail="Question count must be between 1 and 10")
+    introduction_text = None
+    transition_text = []
+    closing_text = None
     
     if payload.topic == "Mixed":
         selected_questions = selected_mixed_random_questions(db, payload.difficulty, payload.question_count)
         question_ids = [question.id for question in selected_questions]
+        questions_in_order = db.query(Question).filter(Question.id.in_(question_ids)).all()
+        question_id_to_question = {question.id: question for question in questions_in_order}
+        topics_in_order = [question_id_to_question[qid].topic for qid in question_ids]
+
+        script = generate_script(
+            question_topics=topics_in_order,
+            question_count=payload.question_count,
+            candidate_name=None
+            )
+        introduction_text = script.get("intro")
+        transition_text = script.get("transitions") or []
+        closing_text = script.get("closing")
     else:
 
         questions_filtered = (
@@ -135,7 +211,16 @@ def start_interview(
             )
         selected_questions = random.sample(questions_filtered, payload.question_count)
         question_ids = [question.id for question in selected_questions]
-    # create new interview session in database
+    # generate script for non-Mixed too
+        topics_in_order = [q.topic for q in selected_questions]
+        script = generate_script(
+            question_topics=topics_in_order,
+            question_count=payload.question_count,
+            candidate_name=None,
+        )
+        introduction_text = script.get("intro")
+        transition_text = script.get("transitions") or []
+        closing_text = script.get("closing")
 
     interview_session = InterviewSession(
         user_id=user.id,
@@ -145,6 +230,9 @@ def start_interview(
         question_ids=question_ids,
         current_index=0,
         status="in_progress",
+        introduction_text=introduction_text,
+        transition_text=transition_text,
+        closing_text=closing_text,
 
     )
     db.add(interview_session)
@@ -279,7 +367,7 @@ def submit_answer(
         background_tasks.add_task(process_overall_feedback_async, session_id)
 
     db.commit()
-    return{"ok":True, "completed": interview_session.status == "completed"}
+    return{"ok":True, "completed": interview_session.status == "completed","closing_text": interview_session.closing_text if interview_session.status == "completed" else None}
 
 @app.get("/interview/{session_id}/summary")
 def get_interview_summary(
@@ -362,7 +450,22 @@ def get_current_question(
 
     #create mp3 file for question
     #audio_url = generate_tts_audio(question.text)
-    audio_url = generate_OPENAI_tts_audio(question.text)
+
+    base_text = question.text
+    pre_question_text = ""
+
+    if interview_session.current_index == 0 and interview_session.introduction_text:
+        pre_question_text = interview_session.introduction_text.strip()
+
+    elif interview_session.current_index > 0:
+        i = interview_session.current_index - 1
+        transitions = interview_session.transition_text or []
+        if i < len(transitions):
+            pre_question_text = str(transitions[i]).strip()
+
+    full_text = f"{pre_question_text} {base_text}" if pre_question_text else base_text
+
+    audio_url = generate_OPENAI_tts_audio(full_text)
 
     return {
         "done": False,
