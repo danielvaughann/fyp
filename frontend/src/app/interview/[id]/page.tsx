@@ -157,6 +157,7 @@ export default function InterviewPage() {
     const chunksRef = useRef<BlobPart[]>([]); // recorded audio chunks reference
     const [isRecording, setIsRecording] = useState(false); // recording state
     const [isTranscribing, setIsTranscribing] = useState(false); // if transcription is in progress
+    const [answerSubmitted, setAnswerSubmitted] = useState(false); // prevents VAD restart after answering
 
     //ui
     const [autoSubmit, setAutoSubmit] = useState(true); // auto submit after voice transcription
@@ -173,6 +174,7 @@ export default function InterviewPage() {
     // get current question from api
     async function loadCurrentQuestion() {
         setError("");
+        setAnswerSubmitted(false); // Reset for new question
         const token = localStorage.getItem("token");
         if (!token) {
             router.push("/login");
@@ -305,6 +307,7 @@ export default function InterviewPage() {
             // extract transcipt
             const transcript = data.transcript || "";
             setAnswer(transcript) // put answer into text box
+            setAnswerSubmitted(true); // Mark as answered, prevents VAD restart
 
             //autosubmit for voice
             if (autoSubmit) {
@@ -445,11 +448,12 @@ export default function InterviewPage() {
     });
 
     useEffect(() => {
-            const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying;
+            const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying && !answerSubmitted;
             console.log("[VAD] Effect:", {
                 hasQuestion: !!current?.question,
                 isTranscribing,
                 isTtsPlaying,
+                answerSubmitted,
                 shouldRun,
                 listening: vad.listening
             });
@@ -467,7 +471,7 @@ export default function InterviewPage() {
                 vad.stop();
             };
 
-        }, [current?.question, isTtsPlaying, isTranscribing]
+        }, [current?.question, isTtsPlaying, isTranscribing, answerSubmitted]
     );
 
     function logout() {
@@ -569,6 +573,7 @@ export default function InterviewPage() {
                     <div>Recording: {isRecording ? "YES" : "no"}</div>
                     <div>Transcribing: {isTranscribing ? "YES" : "no"}</div>
                     <div>TTS Playing: {isTtsPlaying ? "YES" : "no"}</div>
+                    <div>Answer Submitted: {answerSubmitted ? "YES" : "no"}</div>
 
 
                         <button
