@@ -28,6 +28,7 @@ from stt import router as stt_router
 from grading import grader
 from groq import generate_feedback, generate_overall_feedback
 from interview_transitions import build_intro, build_transitions, build_closing
+from sqlalchemy import func
 
 app = FastAPI()
 app.include_router(stt_router)
@@ -301,6 +302,118 @@ def submit_answer(
         "closing_text": interview_session.closing_text if interview_session.status == "completed" else None,
         "closing_audio_url": closing_audio_url,
     }
+@app.get("/interviews/history")
+def get_interview_history(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+
+    rows = (
+        db.query(
+            InterviewSession.id.label("id"),
+            InterviewSession.topic.label("topic"),
+            InterviewSession.difficulty.label("difficulty"),
+            InterviewSession.status.label("status"),
+            InterviewSession.start_time.label("start_time"),
+            InterviewSession.end_time.label("end_time"),
+            InterviewSession.question_count.label("question_count"),
+            func.coalesce(func.avg(Answer.score), 0).label("avg_score"),
+            func.count(Answer.id).label("answered_count"),
+            InterviewSession.overall_feedback.label("overall_feedback"),
+        )
+        .outerjoin(Answer, Answer.session_id == InterviewSession.id)
+        .filter(InterviewSession.user_id == user.id)
+        .filter(InterviewSession.status == "completed")
+        .group_by(InterviewSession.id)
+        .order_by(InterviewSession.start_time.desc())
+        .all()
+    )
+
+    return {
+        "sessions": [
+            {
+                "id": str(r.id),
+                "topic": r.topic,
+                "difficulty": r.difficulty,
+                "status": r.status,
+                "start_time": r.start_time.isoformat() if r.start_time else None,
+                "end_time": r.end_time.isoformat() if r.end_time else None,
+                "question_count": r.question_count,
+                "answered_count": int(r.answered_count or 0),
+                "avg_score": int(round(float(r.avg_score or 0))),
+                "has_overall_feedback": bool(r.overall_feedback),
+            }
+            for r in rows
+        ]
+    }
+
+@app.get("/analytics/topic-breakdown")
+def topic_breakdown(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(
+            Question.topic.label("topic"),
+            func.count(Answer.id).label("answers_count"),
+            func.coalesce(func.avg(Answer.score), 0).label("avg_score"),
+        )
+        .join(InterviewSession, InterviewSession.id == Answer.session_id)
+        .join(Question, Question.id == Answer.question_id)
+        .filter(InterviewSession.user_id == user.id)
+        .filter(InterviewSession.status == "completed")
+        .group_by(Question.topic)
+        .order_by(func.coalesce(func.avg(Answer.score), 0).desc())
+        .all()
+    )
+
+    return {
+        "topics": [
+            {
+                "topic": r.topic,
+                "answers_count": int(r.answers_count),
+                "avg_score": int(round(float(r.avg_score or 0))),
+            }
+            for r in rows
+        ]
+    }
+@app.get("/analytics/sessions-timeseries")
+def sessions_timeseries(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(
+            InterviewSession.id.label("id"),
+            InterviewSession.start_time.label("start_time"),
+            InterviewSession.topic.label("topic"),
+            InterviewSession.difficulty.label("difficulty"),
+            func.coalesce(func.avg(Answer.score), 0).label("avg_score"),
+            func.count(Answer.id).label("answered_count"),
+        )
+        .outerjoin(Answer, Answer.session_id == InterviewSession.id)
+        .filter(InterviewSession.user_id == user.id)
+        .filter(InterviewSession.status == "completed")
+        .group_by(InterviewSession.id)
+        .order_by(InterviewSession.start_time.asc())
+        .all()
+    )
+
+    return {
+        "points": [
+            {
+                "id": str(r.id),
+                "ts": r.start_time.isoformat() if r.start_time else None,
+                "avg_score": int(round(float(r.avg_score or 0))),
+                "answered_count": int(r.answered_count or 0),
+                "topic": r.topic,
+                "difficulty": r.difficulty,
+            }
+            for r in rows
+        ]
+    }
+
+
 @app.get("/interview/{session_id}/summary")
 def get_interview_summary(
     session_id: str,

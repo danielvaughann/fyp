@@ -8,6 +8,15 @@
   --error: #dc2626;
   --success: #16a34a;
   --card-bg: #f9fafb;
+      /* Charts */
+  --chart-1: #2563eb;
+  --chart-2: #16a34a;
+  --chart-3: #f59e0b;
+  --chart-grid: #e5e7eb;
+  --chart-axis: #6b7280;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #e5e7eb;
+
 }
 
 * {
@@ -137,4 +146,20 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+/* Recharts tooltip polish */
+.recharts-default-tooltip {
+  border-radius: 10px !important;
+  border: 1px solid var(--chart-tooltip-border) !important;
+  background: var(--chart-tooltip-bg) !important;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.06) !important;
+}
+
+.recharts-tooltip-label {
+  color: var(--text) !important;
+  font-weight: 600 !important;
+}
+
+.recharts-tooltip-item {
+  color: var(--text-muted) !important;
 }

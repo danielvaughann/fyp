@@ -104,6 +104,7 @@ export default function DashboardPage() {
         <div className="page">
             <div className="header">
                 <h1>Interview Simulator</h1>
+                <button onClick={() => router.push("/results")}>Results</button>
                 <button onClick={logout}>Logout</button>
             </div>
 
