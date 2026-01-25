@@ -27,6 +27,7 @@ from tts import generate_tts_audio, generate_OPENAI_tts_audio
 from stt import router as stt_router
 from grading import grader
 from groq import generate_feedback, generate_overall_feedback
+from interview_transitions import build_intro, build_transitions, build_closing
 
 app = FastAPI()
 app.include_router(stt_router)
@@ -137,6 +138,12 @@ def start_interview(
         question_ids = [question.id for question in selected_questions]
     # create new interview session in database
 
+    topics_in_order = [q.topic for q in selected_questions]
+
+    introduction_text = build_intro(topics_in_order)
+    transition_text = build_transitions(topics_in_order)
+    closing_text = build_closing()
+
     interview_session = InterviewSession(
         user_id=user.id,
         topic=payload.topic,
@@ -145,6 +152,9 @@ def start_interview(
         question_ids=question_ids,
         current_index=0,
         status="in_progress",
+        introduction_text=introduction_text,
+        transition_text=transition_text,
+        closing_text=closing_text,
 
     )
     db.add(interview_session)
@@ -273,14 +283,24 @@ def submit_answer(
     background_tasks.add_task(process_answer_async, session_id, answer.id, question_id, payload.transcript)
 
     interview_session.current_index += 1
+    closing_audio_url = None
     if interview_session.current_index >= interview_session.question_count:
         interview_session.status = "completed"
         interview_session.end_time = datetime.now(timezone.utc)
+
+        if interview_session.closing_text:
+            closing_audio_url = generate_OPENAI_tts_audio(interview_session.closing_text)
+
         background_tasks.add_task(process_overall_feedback_async, session_id)
 
     db.commit()
-    return{"ok":True, "completed": interview_session.status == "completed"}
 
+    return {
+        "ok": True,
+        "completed": interview_session.status == "completed",
+        "closing_text": interview_session.closing_text if interview_session.status == "completed" else None,
+        "closing_audio_url": closing_audio_url,
+    }
 @app.get("/interview/{session_id}/summary")
 def get_interview_summary(
     session_id: str,
@@ -362,7 +382,19 @@ def get_current_question(
 
     #create mp3 file for question
     #audio_url = generate_tts_audio(question.text)
-    audio_url = generate_OPENAI_tts_audio(question.text)
+    base_text = question.text
+    pre = ""
+
+    if interview_session.current_index == 0 and interview_session.introduction_text:
+        pre = interview_session.introduction_text.strip()
+    elif interview_session.current_index > 0:
+        i = interview_session.current_index - 1
+        transitions = interview_session.transition_text or []
+        if i < len(transitions):
+            pre = str(transitions[i]).strip()
+
+    full_text = f"{pre} {base_text}".strip() if pre else base_text
+    audio_url = generate_OPENAI_tts_audio(full_text)
 
     return {
         "done": False,

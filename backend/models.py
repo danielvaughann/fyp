@@ -40,7 +40,11 @@ class Session(Base):
     end_time = Column(DateTime(timezone=True), nullable=True)
     question_ids = Column(JSON,nullable=False, default=list)
     current_index = Column(Integer,nullable=False, default=0)
-    overall_feedback = Column(Text, nullable=True)  
+    overall_feedback = Column(Text, nullable=True)
+    introduction_text = Column(Text, nullable=True)
+    transition_text = Column(JSON, nullable=False, default=list)
+    closing_text = Column(Text, nullable=True)
+
 
 class Answer(Base):
     __tablename__ = "answers"

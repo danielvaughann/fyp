@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import InterviewCamera from "@/components/InterviewCamera";
+import InterviewerAvatar from "@/components/InterviewerAvatar";
 
 // define structure of api response
 type CurrentResponse = {
@@ -161,6 +163,11 @@ export default function InterviewPage() {
     // timer to delay stopping mic after speech ends
     const stopTimerRef = useRef<TimeoutHandle | null>(null);
 
+    const [handOverFaceCount, setHandOverFaceCount] = useState(0);
+
+
+    //closing text
+    const [closingText, setClosingText] = useState<string | null>(null);
 
 
     // get current question from api
@@ -194,7 +201,7 @@ export default function InterviewPage() {
             return;
         }
         // Set TTS playing BEFORE setting current to prevent VAD from starting
-        setIsTtsPlaying(true);
+       // setIsTtsPlaying(true);
         // set current question data triggers tts
         setCurrent(data);
     }
@@ -210,43 +217,42 @@ export default function InterviewPage() {
     }
 
     // tts plays next question when a new question url loads
-    useEffect(() => {
+      useEffect(() => {
         const audioUrl = current?.question?.audio_url;
-        if (!audioUrl) return;
-        
-        console.log("[TTS] New audio URL");
+        const audioEl = audioRef.current;
+        if (!audioUrl || !audioEl) return;
 
-        // stop any current audio playing
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime=0;
-        }
+        console.log("[TTS] New audio URL", audioUrl);
+        setAutoPlayBlocked(false);
 
-        //create new audio element and play
-        const audio = new Audio(`http://localhost:8000${audioUrl}`);
-        audioRef.current = audio;
-        
-        audio.onended = () => {
-            console.log("[TTS] Audio ended");
-            setIsTtsPlaying(false);
-        }
+        audioEl.pause();
+        audioEl.currentTime = 0;
+        audioEl.crossOrigin = "anonymous";
+        audioEl.src = `http://localhost:8000${audioUrl}`;
+        audioEl.load();
 
-        audio.play()
-            .then(() => console.log("[TTS] Playing"))
-            .catch(() => {
-                console.log("[TTS] Autoplay blocked");
-                setAutoPlayBlocked(true);
-                setIsTtsPlaying(false);
-            });
-
-        //cleanup by pausing audio when component unmounts
-        return () => {
-            console.log("[TTS] Cleanup");
-            audio.onended = null;
-            audio.pause();
-            setIsTtsPlaying(false);
+        audioEl.onended = () => {
+          console.log("[TTS] ended");
+          setIsTtsPlaying(false);
         };
-    }, [current?.question?.audio_url]);
+
+        audioEl
+          .play()
+          .then(() => {
+            console.log("[TTS] playing");
+            setIsTtsPlaying(true);
+          })
+          .catch(() => {
+            console.log("[TTS] autoplay blocked");
+            setAutoPlayBlocked(true);
+            setIsTtsPlaying(false);
+          });
+
+        return () => {
+          audioEl.onended = null;
+          audioEl.pause();
+        };
+      }, [current?.question?.audio_url]);
 
     //stop mircophonne
     const stopMic = () => {
@@ -401,57 +407,68 @@ export default function InterviewPage() {
     }
 
 
-            const vad = useVad({
-             onSpeechStart: () => {
-              console.log("[VAD] Speech detected");
-              // reset stop timer if speech starts again
-              if (stopTimerRef.current) {
+    const vad = useVad({
+        onSpeechStart: () => {
+            console.log("[VAD] Speech detected");
+            // reset stop timer if speech starts again
+            if (stopTimerRef.current) {
                 clearTimeout(stopTimerRef.current);
                 stopTimerRef.current = null;
-              }
+            }
 
-              //start recording
-              if (current?.question && !isTranscribing && !isTtsPlaying && !isRecording) {
+            //start recording
+            if (current?.question && !isTranscribing && !isTtsPlaying && !isRecording) {
                 console.log("[VAD] Starting recording");
                 startRecording();
-              } else {
-                console.log("[VAD] Cannot record:", { hasQ: !!current?.question, isTranscribing, isTtsPlaying, isRecording });
-              }
-            },
+            } else {
+                console.log("[VAD] Cannot record:", {
+                    hasQ: !!current?.question,
+                    isTranscribing,
+                    isTtsPlaying,
+                    isRecording
+                });
+            }
+        },
 
-                onSpeechEnd: () => {
-                    console.log("Starting 1 second countdown of speech ending")
-                    if (stopTimerRef.current) return
+        onSpeechEnd: () => {
+            console.log("Starting 1 second countdown of speech ending")
+            if (stopTimerRef.current) return
 
-                    //wait to stop timer not to cut user off
-                    stopTimerRef.current = setTimeout(() => {
-                        console.log("Stopping recording")
-                        stopRecording()
-                        stopTimerRef.current = null;
+            //wait to stop timer not to cut user off
+            stopTimerRef.current = setTimeout(() => {
+                console.log("Stopping recording")
+                stopRecording()
+                stopTimerRef.current = null;
 
-                    }, 1500);
-                }
+            }, 1500);
+        }
+    });
+
+    useEffect(() => {
+            const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying;
+            console.log("[VAD] Effect:", {
+                hasQuestion: !!current?.question,
+                isTranscribing,
+                isTtsPlaying,
+                shouldRun,
+                listening: vad.listening
             });
 
-            useEffect(() => {
-                    const shouldRun = !!current?.question && !isTranscribing && !isTtsPlaying;
-                    console.log("[VAD] Effect:", { hasQuestion: !!current?.question, isTranscribing, isTtsPlaying, shouldRun, listening: vad.listening });
-                    
-                    if (shouldRun && !vad.listening) {
-                        console.log("[VAD] Starting");
-                        vad.start();
-                    } else if (!shouldRun && vad.listening) {
-                        console.log("[VAD] Stopping");
-                        vad.stop();
-                    }
-                    
-                    return () => {
-                        console.log("[VAD] Cleanup");
-                        vad.stop();
-                    };
+            if (shouldRun && !vad.listening) {
+                console.log("[VAD] Starting");
+                vad.start();
+            } else if (!shouldRun && vad.listening) {
+                console.log("[VAD] Stopping");
+                vad.stop();
+            }
 
-                }, [current?.question, isTtsPlaying, isTranscribing]
-            );
+            return () => {
+                console.log("[VAD] Cleanup");
+                vad.stop();
+            };
+
+        }, [current?.question, isTtsPlaying, isTranscribing]
+    );
 
     function logout() {
         localStorage.removeItem("token");
@@ -459,67 +476,126 @@ export default function InterviewPage() {
     }
 
     return (
-        <div className="page">
-            <div className="header">
-                <h1>Interview Simulator</h1>
+        <div
+            style={{
+                width: "100vw",
+                height: "100vh",
+                background: "#0b1220",
+                position: "relative",
+                overflow: "hidden",
+            }}
+        >
+            <audio ref={audioRef} style={{ display: "none" }} />
+            {/* Top bar */}
+            <div
+                style={{
+                    position: "absolute",
+                    top: 12,
+                    left: 12,
+                    right: 12,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    zIndex: 10,
+                    color: "white",
+                }}
+            >
+                <div style={{fontWeight: 700}}>Interview Simulator</div>
                 <button onClick={logout}>Logout</button>
             </div>
 
-            <div className="form-container" style={{ marginTop: 24 }}>
-                <h2>Interview</h2>
-                {/*  */}
-                {error && <p className="error">{error}</p>}
-                {!current && <p>Loading...</p>}
-                {/* main interview page  */}
-                {current && current.question && (
-                    <>
-                        <div>
-                            {/* question counter  */}
-                            <p style={{ marginBottom: 16 }}>
-                                Question {(current.index ?? 0) + 1} / {current.total ?? "?"}
-                            </p>
-                            <p style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>{current.question.text}</p>
-                            <p className="muted" style={{ marginBottom: 16 }}>{current.question.topic}</p>
+            {/* Main stage: avatar */}
+            <div style={{position: "absolute", inset: 0, padding: 16}}>
+                <div
+                    style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 20,
+                        overflow: "hidden",
+                        background: "#ffffff",
+                    }}
+                >
+                    {/* Avatar fills the stage */}
+                    <InterviewerAvatar audioRef={audioRef} isSpeaking={isTtsPlaying}/>
+                </div>
+            </div>
 
-                            {autoPlayBlocked && (
-                                <p style={{ marginTop: 6, color: "var(--error)" }}>Your browser blocked autoplay</p>
-                            )}
-                            <div style={{ marginTop: 16, padding: 12, background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)" }}>
-                                <p className="muted" style={{ fontSize: 13 }}>Listening: {vad.listening ? "YES" : "no"}</p>
-                                <p className="muted" style={{ fontSize: 13 }}>Recording: {isRecording ? "YES" : "no"}</p>
-                                <p className="muted" style={{ fontSize: 13 }}>Transcribing: {isTranscribing ? "YES" : "no"}</p>
-                                <p className="muted" style={{ fontSize: 13 }}>TTS Playing: {isTtsPlaying ? "YES" : "no"}</p>
-                                {isTranscribing && (
-                                    <p style={{ marginTop: 8, color: "var(--primary)", fontWeight: 500 }}>Processing your answer...</p>
-                                )}
-                            </div>
+            {/* Self camera (PiP) */}
+            <div
+                style={{
+                    position: "absolute",
+                    right: 16,
+                    bottom: 16,
+                    width: 320,
+                    height: 220,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+                    zIndex: 20,
+                    background: "#111827",
+                }}
+            >
+                <InterviewCamera
 
-                            <div style={{ marginTop: 16 }}>
-                                <label style={{ display: "flex", alignItems: "center", fontSize: 14 }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={autoSubmit}
-                                        onChange={(e) => setAutoSubmit(e.target.checked)}
-                                        style={{ width: "auto", marginRight: 8, marginBottom: 0 }}
-                                    />
-                                    Auto-submit after transcription
-                                </label>
-                            </div>
+                />
+            </div>
 
-                            <button
-                                type="button"
-                                onClick={stopRecording}
-                                disabled={!isRecording}
-                                style={{ width: "100%", marginTop: 16 }}
-                            >
-                                Stop Recording
-                            </button>
-                        </div>
-                    </>
+            {/* Debug + question overlay */}
+            <div
+                style={{
+                    position: "absolute",
+                    left: 16,
+                    bottom: 16,
+                    width: 420,
+                    borderRadius: 16,
+                    padding: 12,
+                    zIndex: 20,
+                    background: "rgba(0,0,0,0.55)",
+                    color: "white",
+                    backdropFilter: "blur(6px)",
+                }}
+            >
+                {error && <div style={{color: "#ff6b6b", marginBottom: 8}}>{error}</div>}
+
+                <div style={{fontSize: 12, opacity: 0.9, marginBottom: 6}}>
+                    Q {(current?.index ?? 0) + 1} / {current?.total ?? "?"}
+                </div>
+                <div style={{fontSize: 14, fontWeight: 600, marginBottom: 10}}>
+                    {current?.question?.text ?? "Loading..."}
+                </div>
+
+                <div style={{fontSize: 12, opacity: 0.9, lineHeight: 1.6}}>
+                    <div>Listening: {vad.listening ? "YES" : "no"}</div>
+                    <div>Recording: {isRecording ? "YES" : "no"}</div>
+                    <div>Transcribing: {isTranscribing ? "YES" : "no"}</div>
+                    <div>TTS Playing: {isTtsPlaying ? "YES" : "no"}</div>
+
+
+                        <button
+                            onClick={stopRecording}
+                            style={{
+                                marginTop: 10,
+                                width: "100%",
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                border: "none",
+                                background: "#ef4444",
+                                color: "white",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                            }}
+                        >
+                            Stop Recording
+                        </button>
+
+                </div>
+
+                {autoPlayBlocked && (
+                    <div style={{marginTop: 8, color: "#ffd166"}}>
+                        Autoplay blocked — click anywhere then try again
+                    </div>
                 )}
             </div>
         </div>
-
     );
-
 }
